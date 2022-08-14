@@ -7,8 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		5E555C0D2413F4C50049A1A2 /* RnAudio.m in Sources */ = {isa = PBXBuildFile; fileRef = B3E7B5891CC2AC0600A0062D /* RnAudio.m */; };
-		F4FF95D7245B92E800C19C63 /*  RnAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FF95D6245B92E800C19C63 /*  RnAudio.swift */; };
+		A263644A28A87DE100BF73C6 /* RnAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A263644928A87DE100BF73C6 /* RnAudio.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -25,9 +24,9 @@
 
 /* Begin PBXFileReference section */
 		134814201AA4EA6300B7C361 /* libRnAudio.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libRnAudio.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		A263644828A87DDB00BF73C6 /* RnAudio-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "RnAudio-Bridging-Header.h"; sourceTree = "<group>"; };
+		A263644928A87DE100BF73C6 /* RnAudio.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RnAudio.swift; sourceTree = "<group>"; };
 		B3E7B5891CC2AC0600A0062D /* RnAudio.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RnAudio.m; sourceTree = "<group>"; };
-		F4FF95D5245B92E700C19C63 /* RnAudio-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "RnAudio-Bridging-Header.h"; sourceTree = "<group>"; };
-		F4FF95D6245B92E800C19C63 /* RnAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RnAudio.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,9 +51,9 @@
 		58B511D21A9E6C8500147676 = {
 			isa = PBXGroup;
 			children = (
-				F4FF95D6245B92E800C19C63 /* RnAudio.swift */,
+				A263644828A87DDB00BF73C6 /* RnAudio-Bridging-Header.h */,
 				B3E7B5891CC2AC0600A0062D /* RnAudio.m */,
-				F4FF95D5245B92E700C19C63 /* RnAudio-Bridging-Header.h */,
+				A263644928A87DE100BF73C6 /* RnAudio.swift */,
 				134814211AA4EA7D00B7C361 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -116,8 +115,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F4FF95D7245B92E800C19C63 /* RnAudio.swift in Sources */,
-				B3E7B58A1CC2AC0600A0062D /* RnAudio.m in Sources */,
+				A263644A28A87DE100BF73C6 /* RnAudio.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

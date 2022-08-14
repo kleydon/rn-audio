@@ -1,19 +1,32 @@
 # rn-audio
 React native library for recording and playing audio
-## Installation
 
-```sh
-npm install rn-audio
-```
+## Installation:
+
+In package.json's dependencies section:
+  "rn-audio": "kleydon/rn-audio<#tag/commit/master>"
+
+## Post-installation
+  Android:
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+## Set up (for development)
+
+Run `yarn` from rn-audio project directory. (If re-installing, may need to delete node_modules and yarn.lock files in project and example directories...)
+
+## Running the example (for development)
+
+Run `yarn example ios/android` from rn-audio project directory
+
 
 ## Usage
 
 ```js
-import { multiply } from "rn-audio";
+import { Audio } from "rn-audio";
 
 // ...
-
-const result = await multiply(3, 7);
 ```
 
 ## Contributing
@@ -27,6 +40,8 @@ MIT
 ---
 
 ## Dev Notes
+
+Based on 
 
 Skeleton set-up:
 
@@ -43,6 +58,17 @@ Skeleton set-up:
     $ yarn example ios
   Run the example app on Android:
     $ yarn example android
+
+Gotchas:
+  * In the *Module.kt file: 
+    * Be sure to update the value of the tag string.
+    * In the class declaration, be sure to use **private val** reactContext, so it reactContext is available to class member functions
+  * In the XCode MODULE project - use the bridging header file. 
+
+
+Upgrading react-native:
+  Could use https://react-native-community.github.io/upgrade-helper/
+  In reality, probably easier to start with a fresh react native project, using create-react-native-library
 
 
 
