@@ -6,6 +6,8 @@ import {
   Platform,
 } from 'react-native'
 
+import to from 'await-to-js'
+
 const LINKING_ERROR =
   `The package 'rn-audio' doesn't seem to be linked. Make sure: \n\n` +
   Platform.select({ ios: "- You have run 'pod install'\n", default: '' }) +
@@ -21,7 +23,7 @@ const RnAudio = NativeModules.RnAudio ? NativeModules.RnAudio : new Proxy(
     }
   );
 
-export enum AudioSourceAndroidType {
+export enum AndroidAudioSourceId {
   DEFAULT = 0,
   MIC,
   VOICE_UPLINK,
@@ -36,7 +38,7 @@ export enum AudioSourceAndroidType {
   HOTWORD,
 }
 
-export enum OutputFormatAndroidType {
+export enum AndroidOutputFormatId {
   DEFAULT = 0,
   THREE_GPP,
   MPEG_4,
@@ -49,7 +51,7 @@ export enum OutputFormatAndroidType {
   WEBM,
 }
 
-export enum AudioEncoderAndroidType {
+export enum AndroidAudioEncoderId {
   DEFAULT = 0,
   AMR_NB,
   AMR_WB,
@@ -59,7 +61,12 @@ export enum AudioEncoderAndroidType {
   VORBIS,
 }
 
-export enum AVEncodingOption {
+export enum AndroidWavByteDepthId {
+  ONE = 1,
+  TWO = 2
+}
+
+export enum AppleAudioFormatId {
   lpcm = 'lpcm',
   ima4 = 'ima4',
   aac = 'aac',
@@ -76,23 +83,7 @@ export enum AVEncodingOption {
   opus = 'opus',
 }
 
-type AVEncodingType =
-  | AVEncodingOption.lpcm
-  | AVEncodingOption.ima4
-  | AVEncodingOption.aac
-  | AVEncodingOption.MAC3
-  | AVEncodingOption.MAC6
-  | AVEncodingOption.ulaw
-  | AVEncodingOption.alaw
-  | AVEncodingOption.mp1
-  | AVEncodingOption.mp2
-  | AVEncodingOption.mp4
-  | AVEncodingOption.alac
-  | AVEncodingOption.amr
-  | AVEncodingOption.flac
-  | AVEncodingOption.opus
-
-export enum AVModeIOSOption {
+export enum AppleAVAudioSessionModeId {
   gamechat = 'gamechat',
   measurement = 'measurement',
   movieplayback = 'movieplayback',
@@ -103,17 +94,7 @@ export enum AVModeIOSOption {
   voiceprompt = 'voiceprompt',
 }
 
-export type AVModeIOSType =
-  | AVModeIOSOption.gamechat
-  | AVModeIOSOption.measurement
-  | AVModeIOSOption.movieplayback
-  | AVModeIOSOption.spokenaudio
-  | AVModeIOSOption.videochat
-  | AVModeIOSOption.videorecording
-  | AVModeIOSOption.voicechat
-  | AVModeIOSOption.voiceprompt
-
-export enum AVEncoderAudioQualityIOSType {
+export enum AppleAVEncoderAudioQualityId {
   min = 0,
   low = 32,
   medium = 64,
@@ -121,34 +102,46 @@ export enum AVEncoderAudioQualityIOSType {
   max = 127,
 }
 
-export enum AVLinearPCMBitDepthKeyIOSType {
-  'bit8' = 8,
-  'bit16' = 16,
-  'bit24' = 24,
-  'bit32' = 32,
+export enum AppleAVLinearPCMBitDepthId {
+  bit8 = 8,
+  bit16 = 16,
+  bit24 = 24,
+  bit32 = 32,
 }
 
-export interface AudioSet {
-  AVSampleRateKeyIOS?: number,
-  AVFormatIDKeyIOS?: AVEncodingType,
-  AVModeIOS?: AVModeIOSType,
-  AVNumberOfChannelsKeyIOS?: number,
-  AVEncoderAudioQualityKeyIOS?: AVEncoderAudioQualityIOSType,
-  AudioSourceAndroid?: AudioSourceAndroidType,
-  AVLinearPCMBitDepthKeyIOS?: AVLinearPCMBitDepthKeyIOSType,
-  AVLinearPCMIsBigEndianKeyIOS?: boolean,
-  AVLinearPCMIsFloatKeyIOS?: boolean,
-  AVLinearPCMIsNonInterleavedIOS?: boolean,
-  OutputFormatAndroid?: OutputFormatAndroidType,
-  AudioEncoderAndroid?: AudioEncoderAndroidType,
-  AudioEncodingBitRateAndroid?: number,
-  AudioSamplingRateAndroid?: number,
+export interface RecordingOptions {
+  
+  //Shared
+  audioFilePath?: string,
+  meteringEnabled?: boolean,
+  maxRecordingDurationSec?: number,
+  
+  //Apple-specific
+  appleAVSampleRate?: number,
+  appleAVNumberOfChannels?: number,
+  appleAudioFormatId?: AppleAudioFormatId,
+  appleAVAudioSessionModeId?: AppleAVAudioSessionModeId,
+  appleAVEncoderAudioQualityId?: AppleAVEncoderAudioQualityId,
+  //Apple LPCM/WAV-specific
+  appleAVLinearPCMBitDepth?: AppleAVLinearPCMBitDepthId,
+  appleAVLinearPCMIsBigEndian?: boolean,
+  appleAVLinearPCMIsFloatKeyIOS?: boolean,
+  appleAVLinearPCMIsNonInterleaved?: boolean,
+
+  //Android-specific
+  androidAudioSourceId?: AndroidAudioSourceId,
+  androidOutputFormatId?: AndroidOutputFormatId,
+  androidAudioEncoderId?: AndroidAudioEncoderId,
+  androidAudioEncodingBitRate?: number,
+  androidAudioSamplingRate?: number,
+  //Android WAV-specific
+  androidWavByteDepth?: AndroidWavByteDepthId,
 }
 
 enum EventId {
-  RECORDBACK = "rn-recordback",
-  PLAYBACK = "rn-playback",
-  STOPPAGE = "rn-stoppage"
+  RECORDBACK = "rn-recording-callback",
+  PLAYBACK = "rn-playing-callback",
+  STOPPAGE = "rn-stoppage-callback"
 }
 
 enum StopCode {
@@ -157,20 +150,20 @@ enum StopCode {
   ERROR = "error",
 }
 
-export type StoppageType = {
+export type StoppageCallbackMetadata = {
   stopCode: StopCode,
 }
 
-export type RecordBackType = {
+export type RecordingCallbackMetadata = {
   isRecording?: boolean,
-  currentPosition: number,
-  currentMetering?: number,
+  recordingElapsedMs: number,
+  meterLevel?: number,
 }
 
-export type PlayBackType = {
+export type PlaybackCallbackMetadata = {
   isMuted?: boolean,
-  currentPosition: number,
-  duration: number,
+  playbackElapsedMs: number,
+  playbackDurationMs: number,
 }
 
 
@@ -183,17 +176,14 @@ interface RequestedWavParams {
 interface StartPlayerArgs {
   uri?: string,
   httpHeaders?: Record<string, string>,
-  playbackCallback?: (e: PlayBackType) => void
+  playbackCallback?: (playbackMetadata: PlaybackCallbackMetadata) => void
   playbackVolume?: number 
 }
 
 interface StartRecorderArgs {
-  audioSet?: AudioSet,
-  uri?: string,
-  meteringEnabled?: boolean,
-  maxRecordingDurationSec?: number,
-  recordingCallback?: ((recordingMeta: RecordBackType) => void) | null
-  stoppageCallback?: ((stoppageMeta: StoppageType) => void) | null
+  recordingOptions: RecordingOptions,
+  recordingCallback?: ((recordingMetadata: RecordingCallbackMetadata) => void) | null
+  stoppageCallback?: ((stoppageMetadata: StoppageCallbackMetadata) => void) | null
 }
 
 interface StartWavRecorderArgs {
@@ -201,8 +191,8 @@ interface StartWavRecorderArgs {
   path?: string,
   meteringEnabled?: boolean,
   maxRecordingDurationSec?: number,
-  recordingCallback?: ((recordingMeta: RecordBackType) => void) | null
-  stoppageCallback?: ((stoppageMeta: StoppageType) => void) | null
+  recordingCallback?: ((recordingMetadata: RecordingCallbackMetadata) => void) | null
+  stoppageCallback?: ((stoppageMetadata: StoppageCallbackMetadata) => void) | null
 }
 
 const ilog = console.log
@@ -224,7 +214,7 @@ export class Audio {
   private _recorderSubscription: EmitterSubscription | null
   private _playerSubscription: EmitterSubscription | null
   private _stoppageSubscription: EmitterSubscription | null
-  private _playerCallback: ((event: PlayBackType) => void) | null
+  private _playerCallback: ((playbackMetadata: PlaybackCallbackMetadata) => void) | null
 
   constructor() {
     this._isRecording = false
@@ -246,22 +236,22 @@ export class Audio {
     return pad(minutes) + ':' + pad(secs)
   }
 
-  mmssss = (milisecs: number): string => {
-    const secs = Math.floor(milisecs / 1000)
+  mmssss = (ms: number): string => {
+    const secs = Math.floor(ms / 1000)
     const minutes = Math.floor(secs / 60)
     const seconds = secs % 60
-    const miliseconds = Math.floor((milisecs % 1000) / 10)
+    const miliseconds = Math.floor((ms % 1000) / 10)
 
     return pad(minutes) + ':' + pad(seconds) + ':' + pad(miliseconds)
   }
 
   /**
    * Set listener from native module for recorder.
-   * @param { (recordingMeta: RecordBackType) => void } callback parameter
+   * @param { (recordingMetadata: RecordingCallbackMetadata) => void } callback parameter
    * @returns { void }
   */
   private addRecordBackListener = (
-    callback: (recordingMeta: RecordBackType) => void,
+    callback: (recordingMetadata: RecordingCallbackMetadata) => void,
   ): void => {
     if (Platform.OS === 'android') {
       this._recorderSubscription = DeviceEventEmitter.addListener(
@@ -290,19 +280,20 @@ export class Audio {
 
   /**
    * Set listener from native module for stoppage.
-   * @param { (stoppageMeta: StoppageType) => void } callback parameter. The callback MUST 
+   * @param { (stoppageMetadata: StoppageCallbackMetadata) => void } callback parameter. The callback MUST 
    * @returns { void }
    */
-   private addStoppageListener = (
-    callback: ((stoppageMeta: StoppageType) => void) | null,
+   private addRecordingStoppageListener = (
+    callback: ((stoppageMetadata: StoppageCallbackMetadata) => void) | null,
   ): void => {
 
-    const augmentedCallback = (stoppageMeta: StoppageType) => {
+    const augmentedCallback = (stoppageMetadata: StoppageCallbackMetadata) => {
       this.removeRecordBackListener()
-      this.removeStoppageListener()
+      this.removeRecordingStoppageListener()
       this._isRecording = false
+      this._hasPausedRecord = false
       if (callback) {
-        callback(stoppageMeta)
+        callback(stoppageMetadata)
       }
     }
 
@@ -324,7 +315,7 @@ export class Audio {
    * Remove listener for recorder.
    * @returns {void}
    */
-  private removeStoppageListener = (): void => {
+  private removeRecordingStoppageListener = (): void => {
     if (this._stoppageSubscription) {
       this._stoppageSubscription.remove()
       this._stoppageSubscription = null
@@ -333,11 +324,11 @@ export class Audio {
 
   /**
    * Set listener from native module for player.
-   * @param {(playbackMeta: PlayBackType) => void} callback - Callback parameter
+   * @param {(playbackMetadata: PlaybackCallbackMetadata) => void} callback - Callback parameter
    * @returns {void}
    */
   private addPlayBackListener = (
-    callback: (playbackMeta: PlayBackType) => void,
+    callback: (playbackMetadata: PlaybackCallbackMetadata) => void,
   ): void => {
     this._playerCallback = callback
   }
@@ -364,10 +355,7 @@ export class Audio {
    * @returns {Promise<string>}
    */
   startRecorder = async ({
-    audioSet,
-    uri = 'DEFAULT',
-    meteringEnabled = false,
-    maxRecordingDurationSec = 4.0,
+    recordingOptions,
     recordingCallback,
     stoppageCallback = null
   }:StartRecorderArgs): Promise<string> => {
@@ -377,23 +365,20 @@ export class Audio {
     if (!this._isRecording) {
       this._isRecording = true
       this._hasPausedRecord = false
-
       if (recordingCallback) {
-        ilog('   calling index.addRecordBackListener()')
         this.addRecordBackListener(recordingCallback)
       }
-
-      ilog('   calling index.addStoppageListener()')
-      //MUST add stoppage listener, even if its null
-      this.addStoppageListener(stoppageCallback)
-   
-      ilog('   calling RNWRP.startRecorder()')
-      return RnAudio.startRecorder(
-        audioSet,
-        uri,
-        meteringEnabled,
-        maxRecordingDurationSec
-      )
+      //MUST add stoppage listener, even if null
+      this.addRecordingStoppageListener(stoppageCallback)
+      const [err, result] = await to<string>(RnAudio.startRecorder(recordingOptions))
+      if (err) {
+        this._isRecording = false
+        this._hasPausedRecord = false  
+        this.removeRecordBackListener()
+        this.removeRecordingStoppageListener()
+        return 'startRecorder: Error: ' + err
+      }
+      return result
     }
 
     return 'startRecorder: Already recording.'
@@ -425,7 +410,7 @@ export class Audio {
     if (this._isRecording && this._hasPausedRecord) {
       this._hasPausedRecord = false
 
-      ilog('   Calling RNWRP.removeRecordBackListener()')
+      ilog('   Calling RNWRP.resumeRecorder()')
       return RnAudio.resumeRecorder()
     }
 
@@ -445,8 +430,8 @@ export class Audio {
       ilog('   Calling index.removeRecordBackListener()')
       this.removeRecordBackListener()
 
-      ilog('   Calling index.removeStoppageListener()')
-      this.removeStoppageListener()
+      ilog('   Calling index.removeRecordingStoppageListener()')
+      this.removeRecordingStoppageListener()
 
       ilog('   Calling RNWRP.stopRecorder()')
       return RnAudio.stopRecorder()
@@ -455,12 +440,12 @@ export class Audio {
     return 'stopRecorder: Wasn\'t recording (or was called twice).'
   }
 
-  playerCallback = (event: PlayBackType): void => {
+  playerCallback = (event: PlaybackCallbackMetadata): void => {
     if (this._playerCallback) {
       this._playerCallback(event)
     }
 
-    if (event.currentPosition === event.duration) {
+    if (event.playbackElapsedMs === event.playbackDurationMs) {
       this.stopPlayer()
     }
   }
@@ -565,6 +550,7 @@ export class Audio {
    * @returns {Promise<string>}
    */
   stopPlayer = async (): Promise<string> => {
+
     ilog('index.stopPlayer()')
     if (this._isPlaying) {
       this._isPlaying = false
@@ -576,7 +562,7 @@ export class Audio {
       ilog('   calling rnwrp.stopPlayer()')
       return RnAudio.stopPlayer()
     }
-
+  
     return 'stopPlayer: Already stopped playback'
   }
 
@@ -610,7 +596,7 @@ export class Audio {
   }
 
   /**
-   * Set subscription duration. Default is 0.5.
+   * Set subscription duration.
    * @param {number} sec subscription callback duration in seconds.
    * @returns {Promise<string>}
    */
@@ -628,7 +614,7 @@ export class Audio {
     requestedWavParams,
     path = 'DEFAULT',
     meteringEnabled = false,
-    maxRecordingDurationSec = 4.0,
+    //maxRecordingDurationSec = 4.0, //sec
     recordingCallback,
     stoppageCallback = null
   }:StartWavRecorderArgs): Promise<string> => {
@@ -643,9 +629,9 @@ export class Audio {
         this.addRecordBackListener(recordingCallback)
       }
 
-      ilog('   calling index.addStoppageListener()')
+      ilog('   calling index.addRecordingStoppageListener()')
       //Must add stoppage listener; even if its null
-      this.addStoppageListener(stoppageCallback)
+      this.addRecordingStoppageListener(stoppageCallback)
 
       ilog('   calling rnwrp.startWavRecorder()')
       return RnAudio.startWavRecorder(
@@ -705,11 +691,11 @@ export class Audio {
       ilog('   calling index.removeRecordBackListener()')
       this.removeRecordBackListener()
 
-      ilog('   calling index.removeStoppageListener()')
-      this.removeStoppageListener()
+      ilog('   calling index.removeRecordingStoppageListener()')
+      this.removeRecordingStoppageListener()
 
       ilog('   calling rnwrp.stopWavRecorder()')
-      const res = RnAudio.stopWavRecorder()
+      const res = await RnAudio.stopWavRecorder()
       return res
     }
 

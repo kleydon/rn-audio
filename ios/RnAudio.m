@@ -3,12 +3,9 @@
 
 @interface RCT_EXTERN_MODULE(RnAudio, RCTEventEmitter)
 
-RCT_EXTERN_METHOD(setSubscriptionDuration:(double)duration);
+RCT_EXTERN_METHOD(setSubscriptionDuration:(double)durationSec);
 
-RCT_EXTERN_METHOD(startRecorder:(NSDictionary *)audioSets
-                  path:(NSString *)path
-                  meteringEnabled:(BOOL)meteringEnabled
-                  maxRecordingDurationSec:(double)maxRecordingDurationSec
+RCT_EXTERN_METHOD(startRecorder:(NSDictionary *)recordingOptions
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject);
 
@@ -43,13 +40,5 @@ RCT_EXTERN_METHOD(pausePlayer:(RCTPromiseResolveBlock)resolve
 
 RCT_EXTERN_METHOD(stopPlayer:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject);
-
-
-// *****
-
-RCT_EXTERN_METHOD(multiply:(float)a withB:(float)b
-                 withResolver:(RCTPromiseResolveBlock)resolve
-                 withRejecter:(RCTPromiseRejectBlock)reject)
-
 
 @end

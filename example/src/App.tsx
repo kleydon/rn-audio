@@ -1,13 +1,17 @@
 import {
   Audio,
-  AVEncoderAudioQualityIOSType,
-  AVEncodingOption,
-  AudioEncoderAndroidType,
-  AudioSet,
-  AudioSourceAndroidType,
-  PlayBackType,
-  RecordBackType,
-  StoppageType,
+  RecordingOptions,
+  AppleAVEncoderAudioQualityId,
+  AppleAudioFormatId,
+  AppleAVAudioSessionModeId,
+  AndroidAudioSourceId,
+  AndroidAudioEncoderId,
+  AndroidWavByteDepthId,
+  PlaybackCallbackMetadata,
+  RecordingCallbackMetadata,
+  StoppageCallbackMetadata,
+  AppleAVLinearPCMBitDepthId,
+  AndroidOutputFormatId,
 } from 'rn-audio'
 import {
   Dimensions,
@@ -24,6 +28,7 @@ import React, {
 } from 'react'
 import Button from './components/Button'
 import RNFetchBlob from 'rn-fetch-blob'
+import to from 'await-to-js'
 
 const ilog = console.log
 const wlog = console.warn
@@ -112,13 +117,12 @@ const styles: any = StyleSheet.create({
 
 interface State {
   isLoggingIn: boolean,
-  recordSecs: number,
-  recordTime: string,
-  currentPositionSec: number,
-  currentDurationSec: number,
-  playTime: string,
-  duration: string,
-  result: number
+  recordingElapsedMs: number,
+  recordingElapsedStr: string,
+  playbackElapsedMs: number,
+  playbackElapsedStr: string,
+  playbackDurationMs: number,
+  playbackDurationStr: string,
 }
 
 const screenWidth = Dimensions.get('screen').width
@@ -142,13 +146,12 @@ export default class App extends Component<any, State> {
     super(props)
     this.state = {
       isLoggingIn: false,
-      recordSecs: 0,
-      recordTime: '00:00:00',
-      currentPositionSec: 0,
-      currentDurationSec: 0,
-      playTime: '00:00:00',
-      duration: '00:00:00',
-      result: 0
+      recordingElapsedMs: 0,
+      recordingElapsedStr: '00:00:00',
+      playbackElapsedMs: 0,
+      playbackElapsedStr: '00:00:00',
+      playbackDurationMs: 0,
+      playbackDurationStr: '00:00:00',
     }
 
     this.audio = new Audio()
@@ -158,7 +161,7 @@ export default class App extends Component<any, State> {
   public render() {
 
     let playWidth =
-      (this.state.currentPositionSec / this.state.currentDurationSec) *
+      (this.state.playbackElapsedMs / this.state.playbackDurationMs) *
       (screenWidth - 56)
     if (!playWidth) {
       playWidth = 0
@@ -167,8 +170,7 @@ export default class App extends Component<any, State> {
     return (
       <SafeAreaView style={styles.container}>
         <Text style={styles.titleTxt}>RnAudio Example</Text>
-        <Text style={styles.txtRecordCounter}>{this.state.recordTime}</Text>
-        <Text style={styles.txtRecordCounter}>{this.state.result}</Text>
+        <Text style={styles.txtRecordCounter}>{this.state.recordingElapsedStr}</Text>
         <View style={styles.viewButtonRow}>
           <View style={styles.viewButtonSet}>
               <Button
@@ -246,7 +248,7 @@ export default class App extends Component<any, State> {
             </View>
           </TouchableOpacity>
           <Text style={styles.txtCounter}>
-            {this.state.playTime} / {this.state.duration}
+            {this.state.playbackElapsedStr} / {this.state.playbackDurationStr}
           </Text>
           <View style={styles.playBtnWrapper}>
             <Button
@@ -321,18 +323,18 @@ export default class App extends Component<any, State> {
     const touchX = e.nativeEvent.locationX
     ilog(`touchX: ${touchX}`)
     const playWidth =
-      (this.state.currentPositionSec / this.state.currentDurationSec) *
+      (this.state.playbackElapsedMs / this.state.playbackDurationMs) *
       (screenWidth - 56)
     ilog(`currentPlayWidth: ${playWidth}`)
 
-    const currentPosition = Math.round(this.state.currentPositionSec)
+    const playbackElapsedMs = Math.round(this.state.playbackElapsedMs)
 
     if (playWidth && playWidth < touchX) {
-      const addSecs = Math.round(currentPosition + 1000)
+      const addSecs = Math.round(playbackElapsedMs + 1000)
       this.audio.seekToPlayer(addSecs)
       ilog(`addSecs: ${addSecs}`)
     } else {
-      const subSecs = Math.round(currentPosition - 1000)
+      const subSecs = Math.round(playbackElapsedMs - 1000)
       this.audio.seekToPlayer(subSecs)
       ilog(`subSecs: ${subSecs}`)
     }
@@ -346,38 +348,56 @@ export default class App extends Component<any, State> {
       return
     }
 
-    const audioSet: AudioSet = {
-      AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
-      AudioSourceAndroid: AudioSourceAndroidType.MIC,
-      AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
-      AVNumberOfChannelsKeyIOS: 2,
-//      AVFormatIDKeyIOS: AVEncodingOption.aac,
-      AVFormatIDKeyIOS: AVEncodingOption.lpcm,
+    const recordingOptions: RecordingOptions = {
+
+      //Shared
+      audioFilePath: this.path,
+      meteringEnabled: true,
+      maxRecordingDurationSec: 4.0,
+      
+      //Android-specific
+      androidOutputFormatId: AndroidOutputFormatId.MPEG_4, // Default?
+      androidAudioEncoderId: AndroidAudioEncoderId.AAC,
+      androidAudioSourceId: AndroidAudioSourceId.MIC,
+      androidAudioSamplingRate: 44100,
+      androidAudioEncodingBitRate: 192000,
+      //Android LPCM/WAV-specific
+      androidWavByteDepth: AndroidWavByteDepthId.ONE,
+
+      //Apple-specific
+      //appleAudioFormatId: AppleAudioFormatId.aac,
+      appleAudioFormatId: AppleAudioFormatId.lpcm,
+      appleAVNumberOfChannels: 1,
+      appleAVSampleRate: 44100,
+      appleAVAudioSessionModeId: AppleAVAudioSessionModeId.measurement,
+      appleAVEncoderAudioQualityId: AppleAVEncoderAudioQualityId.high,
+      //Apple WAV/LPCM specific
+      appleAVLinearPCMBitDepth: AppleAVLinearPCMBitDepthId.bit16,
+      appleAVLinearPCMIsBigEndian: false,
+      appleAVLinearPCMIsFloatKeyIOS: false,
+      appleAVLinearPCMIsNonInterleaved: false, // Default?
     }
 
-    ilog('audioSet:', audioSet)
+    ilog('recordingOptions:', recordingOptions)
 
-    const recordingCallback = (e: RecordBackType) => {
+    const recordingCallback = (e: RecordingCallbackMetadata) => {
       ilog('record-back', e)
       this.setState({
-        recordSecs: e.currentPosition,
-        recordTime: this.audio.mmssss(
-          Math.floor(e.currentPosition),
+        recordingElapsedMs: e.recordingElapsedMs,
+        recordingElapsedStr: this.audio.mmssss(
+          Math.floor(e.recordingElapsedMs),
         ),
       })
     }
 
-    const stoppageCallback = (e: StoppageType) => {
+    const stoppageCallback = (e: StoppageCallbackMetadata) => {
       ilog('stoppage', e)
       this.onStopRecord()
     }
 
     ilog(   'calling arp.startRecorder()')
     const uri = await this.audio.startRecorder({
-      audioSet,
-      uri: this.path,
-      meteringEnabled: true, //metering enabled
-      maxRecordingDurationSec: 5.0,
+      recordingOptions,
       recordingCallback,
       stoppageCallback
     })
@@ -401,7 +421,7 @@ export default class App extends Component<any, State> {
   private onStopRecord = async () => {
     const result = await this.audio.stopRecorder()
     this.setState({
-      recordSecs: 0,
+      recordingElapsedMs: 0,
     })
     ilog(result)
   }
@@ -409,15 +429,13 @@ export default class App extends Component<any, State> {
   private onStartPlay = async () => {
     ilog('app.onPausePlay()')
 
-    const playbackCallback = (e: PlayBackType) => {
+    const playbackCallback = (e: PlaybackCallbackMetadata) => {
       ilog('app.playBackListener()')
       this.setState({
-        currentPositionSec: e.currentPosition,
-        currentDurationSec: e.duration,
-        playTime: this.audio.mmssss(
-          Math.floor(e.currentPosition),
-        ),
-        duration: this.audio.mmssss(Math.floor(e.duration)),
+        playbackElapsedMs: e.playbackElapsedMs,
+        playbackElapsedStr: this.audio.mmssss(Math.floor(e.playbackElapsedMs)),
+        playbackDurationMs: e.playbackDurationMs,
+        playbackDurationStr: this.audio.mmssss(Math.floor(e.playbackDurationMs)),
       })
     }
 
@@ -448,14 +466,19 @@ export default class App extends Component<any, State> {
   private onStopPlay = async () => {
     ilog('app.onStopPlay()')
     this.setState({
-      currentPositionSec: 0,
-      playTime: this.audio.mmssss(
-        Math.floor(0),
-      ),
-      result: await this.audio.multiply(42, 1)
+      playbackElapsedMs: 0,
+      playbackElapsedStr: this.audio.mmssss(0)
     })
     ilog('   arp.stopPlayer()')
-    this.audio.stopPlayer()    
+
+    const [err, res] = await to(this.audio.stopPlayer())
+    if (err) {
+      const errStr = 'onStopPlay - Error stopping: ' + err
+      elog(errStr)
+      Promise.reject(errStr)
+      return
+    }
+    return Promise.resolve(res)    
   }
 
   // ** NEW FUNCTIONS ***
@@ -466,17 +489,17 @@ export default class App extends Component<any, State> {
     if (await this.ifAndroidEnsurePermissionsSecured() === false) {
       return
     }
-    const recordingCallback = (e: RecordBackType) => {
+    const recordingCallback = (e: RecordingCallbackMetadata) => {
       ilog('app.recordBackListener()')
       this.setState({
-        recordSecs: e.currentPosition,
-        recordTime: this.audio.mmssss(
-          Math.floor(e.currentPosition),
+        recordingElapsedMs: e.recordingElapsedMs,
+        recordingElapsedStr: this.audio.mmssss(
+          Math.floor(e.recordingElapsedMs),
         ),
       })
       ilog('record-back', e)
     }
-    const stoppageCallback = (e: StoppageType) => {
+    const stoppageCallback = (e: StoppageCallbackMetadata) => {
       ilog('stoppage', e)
       this.onStopWavRecord()
     }
@@ -489,7 +512,7 @@ export default class App extends Component<any, State> {
       },
       path: undefined,
       meteringEnabled: true,
-    //  maxRecordingDurationSec: 5.0,
+    //  maxRecordingdurationMs: 5.0,
       recordingCallback,
       stoppageCallback
     })
@@ -517,7 +540,7 @@ export default class App extends Component<any, State> {
   private onStopWavRecord = async () => {
     ilog('app.onStopWavRecord()')
     this.setState({
-      recordSecs: 0,
+      recordingElapsedMs: 0,
     })
     if (await this.audio.isRecording()) {
       ilog('   calling arp.stopWavRecorder()')
