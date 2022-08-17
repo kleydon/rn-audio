@@ -6,26 +6,50 @@ import AVFoundation
 class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   //Events passed from native -> js
-  let EVENT_ID_RECORDING_CALLBACK = "rn-recording-callback"
-  let EVENT_ID_PLAYING_CALLBACK = "rn-playing-callback"
-  let EVENT_ID_STOPPAGE_CALLBACK = "rn-stoppage-callback"  // When recording (and playback?) stops, provides reason
+  //let REC_UPDATE_EVENT_ID = "RecUpdate"
+  //let PLAY_UPDATE_EVENT_ID = "PlayUpdate"
+  //let REC_STOP_EVENT_ID = "RecStop"  // When recording stops, due to error or max duration reached
+  enum Event {
+    case RecUpdate
+    case PlayUpdate
+    case RecStop
+    func name() { return self.rawValue }
+  }
 
   //Event metadata keys
-  let STOP_CODE_KEY = "stopCode"
-  let IS_RECORDING_KEY = "isRecording"
-  let METER_LEVEL_KEY = "meterLevel"
-  let IS_MUTED_KEY = "isMuted"
-  let RECORDING_ELAPSED_MS_KEY = "recordingElapsedMs"
-  let PLAYBACK_ELAPSED_MS_KEY = "playbackElapsedMs"
-  let PLAYBACK_DURATION_MS_KEY = "playbackDurationMs"
+ 
+  // let IS_RECORDING_KEY = "isRecording"
+    // let IS_MUTED_KEY = "isMuted"
+  // let REC_METER_LEVEL_KEY = "recMeterLevel"
+ // let REC_STOP_CODE_KEY = "recStopCode"
+  // let REC_ELAPSED_MS_KEY = "recElapsedMs"
+  // let PLAY_ELAPSED_MS_KEY = "playElapsedMs"
+  // let PLAY_DURATION_MS_KEY = "playDurationMs"
+  enum EventDetailKey {
+    case isMuted
+    case isRecording
+    case recStopCode
+    case recElapsedMs
+    case recMeterLevel
+    case playElapsedMs
+    case playDurationMs
+    func name() { return this.rawValue }
+  }
+
+  // let REC_STOP_CODE_MAX_DURATION_REACHED = "maxDurationReached"
+  // let REC_STOP_CODE_ERROR = "error"
+  enum RecStopCode {
+    case UserRequest
+    case MaxDurationReached
+    case Error
+    func name() { return this.rawValue }
+  }
+
   
   let DEFAULT_FILENAME_PLACEHOLDER = "DEFAULT"
   let DEFAULT_FILENAME = "sound.m4a"
 
-  let DEFAULT_MAX_RECORDING_DURATION_SEC = 10.0
-
-  let STOP_CODE_MAX_RECORDING_DURATION_REACHED = "max-recording-duration-reached"
-  let STOP_CODE_ERROR = "error"
+  let DEFAULT_MAX_REC_DURATION_SEC = 10.0
 
   //File path/URL
   //NOTE: Don't set directly; use setAudioFileURL()
@@ -33,13 +57,13 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   //Durations
   var subscriptionDurationSec: Double = 0.5  // Initialized in construct()
-  var maxRecordingDurationSec: Double = 10.0  // Initialized in construct()
+  var maxRecDurationSec: Double = 10.0  // Initialized in construct()
 
   // Recording-related
   var audioRecorder: AVAudioRecorder!
   var audioSession: AVAudioSession!
   var recordTimer: Timer?
-  var meteringEnabled: Bool = false
+  var recMeteringEnabled: Bool = false
 
   // Playback-related
   var pausedPlayTime: CMTime?
@@ -54,7 +78,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   func construct() {
     print("***IN CONSTRUCT***")
     self.subscriptionDurationSec = 0.1
-    self.maxRecordingDurationSec = DEFAULT_MAX_RECORDING_DURATION_SEC
+    self.maxRecDurationSec = DEFAULT_MAX_REC_DURATION_SEC
   }
 
 
@@ -65,9 +89,9 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   override func supportedEvents() -> [String]! {
     return [ 
-      EVENT_ID_PLAYING_CALLBACK,
-      EVENT_ID_RECORDING_CALLBACK,
-      EVENT_ID_STOPPAGE_CALLBACK
+      Event.PlayUpdate.name(),
+      Event.RecUpdate.name(),
+      Event.RecStop.name()
     ]
   }
 
@@ -171,8 +195,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("  RAW recordingOptions:", ro)
     print("    shared:")
     print("      audioFilePath: ", ro["audioFilePath"] as Any)
-    print("      meteringEnabled: ", ro["meteringEnabled"] as Any)
-    print("      maxRecordingDurationSec: ", ro["maxRecordingDurationSec"] as Any)
+    print("      recMeteringEnabled: ", ro["recMeteringEnabled"] as Any)
+    print("      maxRecDurationSec: ", ro["maxRecDurationSec"] as Any)
     print("    apple:")
     print("      mode: ", ro["appleAVAudioSessionModeId"] as Any)
     print("      format: ", ro["appleAudioFormatId"] as Any)
@@ -188,8 +212,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     //Shared
     let audioFilePath = (ro["audioFilePath"] as? String) ?? DEFAULT_FILENAME_PLACEHOLDER
-    let meteringEnabled = (ro["meteringEnabled"] as? Bool) ?? true
-    let maxRecordingDurationSec = (ro["maxRecordingDurationSec"] as? Double) ?? DEFAULT_MAX_RECORDING_DURATION_SEC
+    let recMeteringEnabled = (ro["recMeteringEnabled"] as? Bool) ?? true
+    let maxRecDurationSec = (ro["maxRecDurationSec"] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
 
     //Apple-specific
     let mode = avAudioSessionModeFromString(modeStr: ro["appleAVAudioSessionModeId"] as? String)
@@ -207,8 +231,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("  COERCED recordingOptions:")
     print("    shared:")
     print("      audioFilePath: ", audioFilePath)
-    print("      meteringEnabled: ", meteringEnabled)
-    print("      maxRecordingDurationSec: ", maxRecordingDurationSec)
+    print("      recMeteringEnabled: ", recMeteringEnabled)
+    print("      maxRecDurationSec: ", maxRecDurationSec)
     print("    apple:")
     print("      mode: ", mode)
     print("      format: ", format)
@@ -223,12 +247,12 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("      lpcmIsNonInterleaved: ", lpcmIsNonInterleaved)
 
     setAudioFileURL(path: audioFilePath)
-    self.meteringEnabled = meteringEnabled
-    self.maxRecordingDurationSec = maxRecordingDurationSec
+    self.recMeteringEnabled = recMeteringEnabled
+    self.maxRecDurationSec = maxRecDurationSec
 
     func sendStopCodeErrorEvent() {
-      let status = [ STOP_CODE_KEY: STOP_CODE_ERROR ] as [String : String];
-      sendEvent(withName: EVENT_ID_STOPPAGE_CALLBACK, body: status)
+      let status = [ EventDetailKey.RecStopCode.name(): RecStopCode.Error.name() ] as [String : String];
+      sendEvent(withName: Event.RecStop.name(), body: status)
     }
 
     func startRecording() {
@@ -277,7 +301,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   
         audioRecorder.prepareToRecord()
         audioRecorder.delegate = self
-        audioRecorder.isMeteringEnabled = self.meteringEnabled
+        audioRecorder.isMeteringEnabled = self.recMeteringEnabled
         
         let isRecordStarted = audioRecorder.record()
         if (!isRecordStarted) {
@@ -402,26 +426,24 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     }
 
     var meterLevel: Float = 0
-    if (self.meteringEnabled) {
+    if (self.recMeteringEnabled) {
       audioRecorder.updateMeters()
       meterLevel = audioRecorder.averagePower(forChannel: 0)
     }
 
-    //XXX - currentTime is seconds here -> elapsed should be ms
-
     let status = [
-      IS_RECORDING_KEY: audioRecorder.isRecording,
-      RECORDING_ELAPSED_MS_KEY: audioRecorder.currentTime * 1000,
-      METER_LEVEL_KEY: meterLevel,
+      EventDetailKey.IsRecording.name(): audioRecorder.isRecording,
+      EventDetailKey.RecElapsedMs.name(): audioRecorder.currentTime * 1000,
+      EventDetailKey.RecMeterLevel.name(): meterLevel,
     ] as [String : Any];
 
-    sendEvent(withName: EVENT_ID_RECORDING_CALLBACK, body: status)
+    sendEvent(withName: Event.RecUpdate.name(), body: status)
 
-    if (audioRecorder.currentTime >= self.maxRecordingDurationSec) {
+    if (audioRecorder.currentTime >= self.maxRecDurationSec) {
       
       print("STOPPING!")
-      let status = [ STOP_CODE_KEY: STOP_CODE_MAX_RECORDING_DURATION_REACHED ] as [String : String];
-      sendEvent(withName: EVENT_ID_STOPPAGE_CALLBACK, body: status)
+      let status = [ EventDetailKey.RecStopCode.name(): REC_STOP_CODE_MAX_DURATION_REACHED ] as [String : String];
+      sendEvent(withName: Event.RecStop.name(), body: status)
       
       stopRecorderInner()
     }
@@ -565,11 +587,11 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     timeObserverToken = audioPlayer.addPeriodicTimeObserver(forInterval: time,
                                                             queue: .main) {_ in
       if (self.audioPlayer != nil) {
-          self.sendEvent(withName: self.EVENT_ID_PLAYING_CALLBACK, body: [
-          self.IS_MUTED_KEY: self.audioPlayer.isMuted,
-          self.PLAYBACK_ELAPSED_MS_KEY: self.audioPlayerItem.currentTime().seconds * 1000,
-          self.PLAYBACK_DURATION_MS_KEY: self.audioPlayerItem.asset.duration.seconds * 1000,
-        ])
+          self.sendEvent(withName: self.Event.PlayUpdate.name(), body: [
+            self.EventDetailKey.IsMuted.name(): self.audioPlayer.isMuted,
+            self.EventDetailKey.PlayElapsedMs.name(): self.audioPlayerItem.currentTime().seconds * 1000,
+            self.EventDetailKey.PlayDurationMs.name(): self.audioPlayerItem.asset.duration.seconds * 1000,
+          ])
       }
     }
   }
