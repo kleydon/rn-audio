@@ -131,12 +131,13 @@ const screenWidth = Dimensions.get('screen').width
 const dirs = RNFetchBlob.fs.dirs
 
 const audio = new Audio();
+audio.setSubscriptionDuration(0.1) // optional. Default is 0.5
 
 const recordingOptions: RecordingOptions = {
 
   //Shared
   audioFilePath: Platform.select({
-  //ios: 'hello.m4a',
+  //ios: 'recording.m4a',
   ios: 'recording.wav',
     //ios: `${dirs.CacheDir}/recording.wav`,
     //ios: `recording.wav`,
@@ -146,30 +147,32 @@ const recordingOptions: RecordingOptions = {
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,
   
-  //Android-specific
-  //androidOutputFormatId: AndroidOutputFormatId.MPEG_4, // Default?
-  androidOutputFormatId: AndroidOutputFormatId.WAV,
-  //androidAudioEncoderId: AndroidAudioEncoderId.AAC,
-  androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
-  androidAudioSourceId: AndroidAudioSourceId.MIC,
-  androidAudioSamplingRate: 46000,
-  androidAudioEncodingBitRate: 128000,
-  //Android LPCM/WAV-specific
-  androidWavByteDepth: AndroidWavByteDepthId.TWO,
-  androidWavNumberOfChannels: AndroidWavNumberOfChannelsId.ONE,
-
   //Apple-specific
   //appleAudioFormatId: AppleAudioFormatId.aac,
   appleAudioFormatId: AppleAudioFormatId.lpcm,
   appleAVNumberOfChannels: 1,
-  appleAVSampleRate: 44100,
+  appleAVSampleRate: 48000,
   appleAVAudioSessionModeId: AppleAVAudioSessionModeId.measurement,
+  //Apple encoded/compressed-specific
   appleAVEncoderAudioQualityId: AppleAVEncoderAudioQualityId.high,
   //Apple WAV/LPCM specific
   appleAVLinearPCMBitDepth: AppleAVLinearPCMBitDepthId.bit16,
   appleAVLinearPCMIsBigEndian: false,
   appleAVLinearPCMIsFloatKeyIOS: false,
-  appleAVLinearPCMIsNonInterleaved: false, // Default?
+  appleAVLinearPCMIsNonInterleaved: false,
+
+  //Android-specific
+  //androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
+  androidOutputFormatId: AndroidOutputFormatId.WAV,
+  //androidAudioEncoderId: AndroidAudioEncoderId.AAC,
+  androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
+  androidAudioSourceId: AndroidAudioSourceId.MIC,
+  androidAudioSamplingRate: 44100,
+  //Android encoded/compressed-specific
+  androidAudioEncodingBitRate: 128000,
+  //Android LPCM/WAV-specific
+  androidWavByteDepth: AndroidWavByteDepthId.TWO,
+  androidWavNumberOfChannels: AndroidWavNumberOfChannelsId.ONE,
 }
 
 
@@ -186,9 +189,6 @@ export default class App extends Component<any, State> {
       playbackDurationMs: 0,
       playbackDurationStr: '00:00:00',
     }
-
-
-    audio.setSubscriptionDuration(0.1) // optional. Default is 0.5
   }
 
   public render() {
@@ -317,7 +317,8 @@ export default class App extends Component<any, State> {
     )
   }
 
-  private async ifAndroidEnsurePermissionsSecured() {
+  private async ifAndroidEnsurePermissionsSecured():Promise<boolean> {
+    ilog('app.ifAndroidEnsurePermissionsSecured()')
     if (Platform.OS === 'android') {
       try {
         const grants = await PermissionsAndroid.requestMultiple([
@@ -347,7 +348,8 @@ export default class App extends Component<any, State> {
     return true
   }
 
-  private onStatusPress = (e: any) => {
+  private onStatusPress = (e: any):void => {
+    ilog('app.onStatusPress()')
     const touchX = e.nativeEvent.locationX
     const playWidth =
       (this.state.playbackElapsedMs / this.state.playbackDurationMs) *
@@ -365,14 +367,16 @@ export default class App extends Component<any, State> {
     }
   }
 
-  private onStartRecord = async () => {
-    ilog('onStartRecord()')
-    if (await this.ifAndroidEnsurePermissionsSecured() === false) {
-      return
+  private onStartRecord = async ():Promise<undefined> => {
+    ilog('app.onStartRecord()')
+    if (await this.ifAndroidEnsurePermissionsSecured() !== true) {
+      const errStr = 'Android permissions not secured'
+      elog('app.onStartRecord(): ', errStr)
+      return Promise.reject(errStr)
     }
     ilog('recordingOptions:', recordingOptions)
     const recUpdateCallback = (e: RecUpdateMetadata) => {
-      ilog('recUpdateCallback() - metadata: ', e)
+      ilog('app.recUpdateCallback() - metadata: ', e)
       this.setState({
         recordingElapsedMs: e.recElapsedMs,
         recordingElapsedStr: audio.mmssss(
@@ -380,61 +384,71 @@ export default class App extends Component<any, State> {
         ),
       })
     }
-    const recStopCallback = (e: RecStopMetadata) => {
-      ilog('recStopCallback() - metadata:', e)
-      this.onStopRecord()
+    const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
+      ilog('app.recStopCallback() - metadata:', e)
+      const [err, res] = await to<undefined>(this.onStopRecord())
+      if (err) {
+        const errStr = 'In recStopCallback - error calling onStopRecord(): ' + e
+        elog(errStr)
+        return
+      }
+      ilog('app.recStopCallback() - Result:', res)
+      return
     }
-    const [err, res] = await to(audio.startRecorder({
-        recordingOptions,
-        recUpdateCallback,
-        recStopCallback
+    const [err, res] = await to<object|string>(audio.startRecorder({
+      recordingOptions,
+      recUpdateCallback,
+      recStopCallback
     }))
     if (err) {
       const errMsg = 'app.onStartRecord() - Error:' + err
       elog(errMsg)
-      return Promise.reject(errMsg)
+      return
     }
-    ilog('  onStartRecord() result:', res)
+    ilog('app.onStartRecord() - Result:', res)
     return res
   }
 
-  private onPauseRecord = async () => {
-    const [err, res] = await to(audio.pauseRecorder())
+  private onPauseRecord = async ():Promise<undefined> => {
+    ilog('app.onPauseRecord()')
+    const [err, res] = await to<string>(audio.pauseRecorder())
     if (err) {
       const errMsg = 'onPauseRecord() - Error: ' + err
       elog(errMsg)
-      return Promise.reject(errMsg)
+      return
     }
-    ilog(res)
-    return res
+    ilog('app.onPauseRecord() - Result:',  res)
+    return
   }
 
-  private onResumeRecord = async () => {
-    const [err, res] = await to(audio.resumeRecorder())
+  private onResumeRecord = async ():Promise<undefined> => {
+    ilog('app.onResumeRecord()')
+    const [err, res] = await to<string>(audio.resumeRecorder())
     if (err) {
-      const errMsg = 'onResumeRecord() - Error: ' + err
+      const errMsg = 'app.onResumeRecord() - Error: ' + err
       elog(errMsg)
-      return Promise.reject(errMsg)
+      return
     }
-    ilog(res)
-    return res
+    ilog('app.onResumeRecord() - Result: ',  res)
+    return
   }
 
-  private onStopRecord = async () => {
-    const [err, res] = await to(audio.stopRecorder())
+  private onStopRecord = async ():Promise<undefined> => {
+    ilog('app.onStartRecord()')
+    const [err, res] = await to<object|string>(audio.stopRecorder())
     if (err) {
-      const errMsg = 'onStopRecord() - Error: ' + err
+      const errMsg = 'app.onStopRecord() - Error: ' + err
       elog(errMsg)
-      return Promise.reject(errMsg)
+      return
     }
     this.setState({
       recordingElapsedMs: 0,
     })
-    ilog(res)
-    return res
+    ilog('app.onStopRecord() - Result: ', res)
+    return
   }
 
-  private onStartPlay = async () => {
+  private onStartPlay = async ():Promise<undefined> => {
     ilog('app.onStartPlay()')
     const playUpdateCallback = (e: PlayUpdateMetadata) => {
       ilog('app.playUpdateEventCallback() - metadata: ', e)
@@ -445,7 +459,7 @@ export default class App extends Component<any, State> {
         playbackDurationStr: audio.mmssss(Math.floor(e.playDurationMs)),
       })
     }
-    const [err, res] = await to(audio.startPlayer({
+    const [err, res] = await to<object|string>(audio.startPlayer({
       uri: recordingOptions.audioFilePath,
       playUpdateCallback,
       playVolume: 1.0,
@@ -453,27 +467,35 @@ export default class App extends Component<any, State> {
     if (err) {
       const errStr = 'app.onStartPlay: ' + err
       elog(errStr)
-      return Promise.reject(errStr)
+      return
     }
-    ilog(res)
-    return res
+    ilog('app.onStartPlay() - Result: ',  res)
+    return
   }
 
   private onPausePlay = async () => {
     ilog('app.onPausePlay()')
     ilog('   index.pausePlayer()')
-    await audio.pausePlayer()
+    const [err, res] = await to<string>(audio.pausePlayer())
+    if (err) {
+      const errStr = 'app.onPausePlay: ' + err
+      elog(errStr)
+      return
+    }
+    ilog('app.onPausePlay() - Result: ', res)
+    return res
   }
 
   private onResumePlay = async () => {
     ilog('app.onResumePlay()')
-    const [err, res] = await to(audio.resumePlayer())
+    const [err, res] = await to<string>(audio.resumePlayer())
     if (err) {
       const errStr = 'app.onResumePlay: ' + err
       elog(errStr)
-      return Promise.reject(errStr)
+      return
     }
-    return res 
+    ilog('app.onResumePlay() - Result: ', res)
+    return res
   }
 
   private onStopPlay = async () => {
@@ -482,91 +504,14 @@ export default class App extends Component<any, State> {
       playbackElapsedMs: 0,
       playbackElapsedStr: audio.mmssss(0)
     })
-    const [err, res] = await to(audio.stopPlayer())
+    const [err, res] = await to<string>(audio.stopPlayer())
     if (err) {
       const errStr = 'app.onStopPlay: ' + err
       elog(errStr)
-      Promise.reject(errStr)
       return
     }
-    return Promise.resolve(res)    
+    ilog('app.onStopPlay() - Result: ', res)
+    return res  
   }
 
-  // Android wav recording functions
-/*
-  private onStartAndroidWavRecord = async () => {
-    ilog('app.onStartWavRecord()')
-    if (await this.ifAndroidEnsurePermissionsSecured() === false) {
-      return
-    }
-    ilog('recordingOptions:', recordingOptions)
-    const recUpdateCallback = (e: RecUpdateMetadata) => {
-      ilog('app.recordUpdateCallback() - metadata:', e)
-      this.setState({
-        recordingElapsedMs: e.recElapsedMs,
-        recordingElapsedStr: audio.mmssss(
-          Math.floor(e.recElapsedMs),
-        ),
-      })
-    }
-    const recStopCallback = (e: RecStopMetadata) => {
-      ilog('recStopCallback() - metadata:', e)
-      this.onStopAndroidWavRecord()
-    }
-    const [err, res] = await to(audio.startAndroidWavRecorder({
-      recordingOptions,
-      recUpdateCallback,
-      recStopCallback
-    }))
-    if (err) {
-      const errMsg = 'app.onStartAndroidWavRecord:' + err
-      elog(errMsg)
-      return Promise.reject(errMsg)
-    }
-    ilog(res)
-    return res
-  }
-
-  private onPauseAndroidWavRecord = async () => {
-    ilog('app.onPauseAndroidWavRecord()')
-    const [err, res] = await to(audio.pauseAndroidWavRecorder())
-    if (err) {
-      const errMsg = 'app.onPauseAndroidWavRecord:' + err
-      elog(errMsg)
-      return Promise.reject(errMsg)
-    }
-    ilog(res)
-    return res    
-  }
-
-  private onResumeAndroidWavRecord = async () => {
-    ilog('app.onResumeAndroidWavRecord()')
-    const [err, res] = await to(audio.resumeAndroidWavRecorder())
-    if (err) {
-      const errMsg = 'app.onResumeAndroidWavRecord() - Error:' + err
-      elog(errMsg)
-      return Promise.reject(errMsg)
-    }
-    ilog(res)
-    return res
-  }
-
-  private onStopAndroidWavRecord = async () => {
-    ilog('app.onAndroidStopWavRecord()')
-    this.setState({
-      recordingElapsedMs: 0,
-    })
-    if (await audio.isRecording()) {
-      const [err, res] = await to(audio.stopAndroidWavRecorder())
-      if (err) {
-        const errMsg = 'app.onStopAndroidWavRecord() - Error:' + err
-        elog(errMsg)
-        return Promise.reject(errMsg)
-      }
-      ilog(res)
-      return res
-    }
-    return 'onStopAndroidWavRecord: Wasn\'t recording'
-  }
-  */
 }

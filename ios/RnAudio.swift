@@ -6,58 +6,55 @@ import AVFoundation
 class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   //Events passed from native -> js
-  //let REC_UPDATE_EVENT_ID = "RecUpdate"
-  //let PLAY_UPDATE_EVENT_ID = "PlayUpdate"
-  //let REC_STOP_EVENT_ID = "RecStop"  // When recording stops, due to error or max duration reached
-  enum Event {
-    case RecUpdate
-    case PlayUpdate
-    case RecStop
-    func name() { return self.rawValue }
-  }
+  let EVENT_ID_REC_UPDATE = "RecUpdate"
+  let EVENT_ID_PLAY_UPDATE = "PlayUpdate"
+  let EVENT_ID_REC_STOP = "RecStop"  // When recording stops, due to error or max duration reached
 
-  //Event metadata keys
- 
-  // let IS_RECORDING_KEY = "isRecording"
-    // let IS_MUTED_KEY = "isMuted"
-  // let REC_METER_LEVEL_KEY = "recMeterLevel"
- // let REC_STOP_CODE_KEY = "recStopCode"
-  // let REC_ELAPSED_MS_KEY = "recElapsedMs"
-  // let PLAY_ELAPSED_MS_KEY = "playElapsedMs"
-  // let PLAY_DURATION_MS_KEY = "playDurationMs"
-  enum EventDetailKey {
-    case isMuted
-    case isRecording
-    case recStopCode
-    case recElapsedMs
-    case recMeterLevel
-    case playElapsedMs
-    case playDurationMs
-    func name() { return this.rawValue }
-  }
+  //Recording stop codes
+  let REC_STOP_CODE_REQUESTED = "Requested" //Ever used, in iOS?
+  let REC_STOP_CODE_MAX_DURATION_REACHED = "MaxDurationReached"
+  let REC_STOP_CODE_ERROR = "ERROR"
+    
+  //Event metadata keys 
+  let KEY_IS_RECORDING = "isRecording"
+  let KEY_IS_MUTED = "isMuted"
+  let KEY_REC_METER_LEVEL = "recMeterLevel"
+  let KEY_REC_STOP_CODE = "recStopCode"
+  let KEY_REC_ELAPSED_MS = "recElapsedMs"
+  let KEY_PLAY_ELAPSED_MS = "playElapsedMs"
+  let KEY_PLAY_DURATION_MS = "playDurationMs"
 
-  // let REC_STOP_CODE_MAX_DURATION_REACHED = "maxDurationReached"
-  // let REC_STOP_CODE_ERROR = "error"
-  enum RecStopCode {
-    case UserRequest
-    case MaxDurationReached
-    case Error
-    func name() { return this.rawValue }
-  }
 
-  
   let DEFAULT_FILENAME_PLACEHOLDER = "DEFAULT"
   let DEFAULT_FILENAME = "sound.m4a"
 
   let DEFAULT_MAX_REC_DURATION_SEC = 10.0
+  let DEFAULT_SUBSCRIPTION_DURATION_SEC = 0.5
+
+
+  //Requested/Granted RecordingOption keys
+  let audioFilePathKey = "audioFilePath"
+  let recMeteringEnabledKey = "recMeteringEnabled"
+  let maxRecDurationSecKey = "maxRecDurationSec"
+  //Apple specific
+  let appleAVSampleRateKey = "appleAVSampleRate"
+  let appleAVNumberOfChannelsKey = "appleAVNumberOfChannels"
+  let appleAudioFormatIdKey = "appleAudioFormatId"
+  let appleAVAudioSessionModeIdKey = "appleAVAudioSessionModeId"
+  let appleAVEncoderAudioQualityIdKey = "appleAVEncoderAudioQualityId"
+  //Apple LPCM/WAV-specific
+  let appleAVLinearPCMBitDepthKey = "appleAVLinearPCMBitDepth"
+  let appleAVLinearPCMIsBigEndianKey = "appleAVLinearPCMIsBigEndian"
+  let appleAVLinearPCMIsFloatKeyIOSKey = "appleAVLinearPCMIsFloatKeyIOS"
+  let appleAVLinearPCMIsNonInterleavedKey = "appleAVLinearPCMIsNonInterleaved"
 
   //File path/URL
   //NOTE: Don't set directly; use setAudioFileURL()
   var audioFileURL: URL? = nil
 
   //Durations
-  var subscriptionDurationSec: Double = 0.5  // Initialized in construct()
-  var maxRecDurationSec: Double = 10.0  // Initialized in construct()
+  var subscriptionDurationSec: Double = 0.5 // Initialized in constructor
+  var maxRecDurationSec: Double = 10.0  // Initialized in constructor
 
   // Recording-related
   var audioRecorder: AVAudioRecorder!
@@ -74,13 +71,12 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   var timeObserverToken: Any?
 
 
-  @objc
-  func construct() {
-    print("***IN CONSTRUCT***")
-    self.subscriptionDurationSec = 0.1
+  override init() {
+    super.init()
+    self.subscriptionDurationSec = DEFAULT_SUBSCRIPTION_DURATION_SEC
     self.maxRecDurationSec = DEFAULT_MAX_REC_DURATION_SEC
   }
-
+    
 
   override static func requiresMainQueueSetup() -> Bool {
     return true
@@ -89,20 +85,22 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   override func supportedEvents() -> [String]! {
     return [ 
-      Event.PlayUpdate.name(),
-      Event.RecUpdate.name(),
-      Event.RecStop.name()
+      EVENT_ID_PLAY_UPDATE,
+      EVENT_ID_REC_UPDATE,
+      EVENT_ID_REC_STOP
     ]
   }
 
 
   @objc(setSubscriptionDuration:)
   func setSubscriptionDuration(durationSec: Double) -> Void {
+    print("RnAudio.setSubscriptionDuration()")
     self.subscriptionDurationSec = durationSec
   }
 
 
   func setAudioFileURL(path: String?) {
+    print("RnAudio.setAudioFileURL()")
     if (path == nil || path == "DEFAULT") {
       let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
       self.audioFileURL = cachesDirectory.appendingPathComponent(DEFAULT_FILENAME)
@@ -120,29 +118,43 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   // RECORDER
 
   func kAudioFormatNumberFromAudioFormatId(formatId:String?) -> Int {
+    print("RnAudio.kAudioFormatNumberFromAudioFormatId()")
+    // (8/17/2022) According to https://developer.apple.com/documentation/avfaudio/avaudiorecorder/1388386-init
+    // AVAudioRecorder.init(url: settings) only supports 
+    //   kAudioFormatLinearPCM
+    //   kAudioFormatMPEG4AAC
+    //   kAudioFormatAppleLossless
+    //   kAudioFormatAppleIMA4
+    //   kAudioFormatiLBC
+    //   kAudioFormatULaw
     switch formatId {
       case "lpcm":
         return Int(kAudioFormatLinearPCM)
-      case "ima4":
-        return Int(kAudioFormatAppleIMA4)
       case "aac":
         return Int(kAudioFormatMPEG4AAC)
+      case "mp4":      
+        return Int(kAudioFormatMPEG4AAC)
+      case "alac":      
+        return Int(kAudioFormatAppleLossless)
+      case "ilbc":
+        return Int(kAudioFormatiLBC)
+      case "ulaw":
+        return Int(kAudioFormatULaw)
+      //Possibly unsupported by AvAudioRecorder (8/17/2022):
+      case "ima4":
+        return Int(kAudioFormatAppleIMA4)
       case "MAC3":
         return Int(kAudioFormatMACE3)
       case "MAC6":
         return Int(kAudioFormatMACE6)
-      case "ulaw":
-        return Int(kAudioFormatULaw)
       case "alaw":
         return Int(kAudioFormatALaw)
       case "mp1":
         return Int(kAudioFormatMPEGLayer1)
       case "mp2":
         return Int(kAudioFormatMPEGLayer2)
-      case "mp4":      
-        return Int(kAudioFormatMPEG4AAC)
-      case "alac":      
-        return Int(kAudioFormatAppleLossless)
+
+
       case "amr":      
         return Int(kAudioFormatAMR) 
       case "opus":      
@@ -158,6 +170,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   }
 
   func avAudioSessionModeFromString(modeStr:String?) -> AVAudioSession.Mode {
+    print("RnAudio.avAudioSessionModeFromString()")
     switch modeStr {
       case "measurement":
         return AVAudioSession.Mode.measurement
@@ -187,46 +200,45 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   func startRecorder(recordingOptions: [String: Any],
                      resolver resolve: @escaping RCTPromiseResolveBlock,
                      rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
-
-    print("startRecorder()")
+    print("RnAudio.startRecorder()")
 
     let ro = recordingOptions
 
     print("  RAW recordingOptions:", ro)
     print("    shared:")
-    print("      audioFilePath: ", ro["audioFilePath"] as Any)
-    print("      recMeteringEnabled: ", ro["recMeteringEnabled"] as Any)
-    print("      maxRecDurationSec: ", ro["maxRecDurationSec"] as Any)
+    print("      audioFilePath: ", ro[audioFilePathKey] as Any)
+    print("      recMeteringEnabled: ", ro[recMeteringEnabledKey] as Any)
+    print("      maxRecDurationSec: ", ro[maxRecDurationSecKey] as Any)
     print("    apple:")
-    print("      mode: ", ro["appleAVAudioSessionModeId"] as Any)
-    print("      format: ", ro["appleAudioFormatId"] as Any)
-    print("      sampleRate: ", ro["appleAVSampleRate"] as Any)
-    print("      numChannels: ", ro["appleAVNumberOfChannels"] as Any)
+    print("      mode: ", ro[appleAVAudioSessionModeIdKey] as Any)
+    print("      format: ", ro[appleAudioFormatIdKey] as Any)
+    print("      sampleRate: ", ro[appleAVSampleRateKey] as Any)
+    print("      numChannels: ", ro[appleAVNumberOfChannelsKey] as Any)
     print("      apple-compressed:")
-    print("        quality: ", ro["appleAVEncoderAudioQualityId"] as Any)
+    print("        quality: ", ro[appleAVEncoderAudioQualityIdKey] as Any)
     print("      apple-lpcm:")
-    print("        lpcmBitDepth: ", ro["appleAVLinearPCMBitDepth"] as Any)
-    print("        lpcmIsBigEndian: ", ro["appleAVLinearPCMIsBigEndian"] as Any)
-    print("        lpcmIsFloatKey: ", ro["appleAVLinearPCMIsFloatKeyIOS"] as Any)
-    print("        lpcmIsNonInterleaved: ", ro["appleAVLinearPCMIsNonInterleaved"] as Any)
+    print("        lpcmBitDepth: ", ro[appleAVLinearPCMBitDepthKey] as Any)
+    print("        lpcmIsBigEndian: ", ro[appleAVLinearPCMIsBigEndianKey] as Any)
+    print("        lpcmIsFloatKey: ", ro[appleAVLinearPCMIsFloatKeyIOSKey] as Any)
+    print("        lpcmIsNonInterleaved: ", ro[appleAVLinearPCMIsNonInterleavedKey] as Any)
 
     //Shared
-    let audioFilePath = (ro["audioFilePath"] as? String) ?? DEFAULT_FILENAME_PLACEHOLDER
-    let recMeteringEnabled = (ro["recMeteringEnabled"] as? Bool) ?? true
-    let maxRecDurationSec = (ro["maxRecDurationSec"] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
+    let audioFilePath = (ro[audioFilePathKey] as? String) ?? DEFAULT_FILENAME_PLACEHOLDER
+    let recMeteringEnabled = (ro[recMeteringEnabledKey] as? Bool) ?? true
+    let maxRecDurationSec = (ro[maxRecDurationSecKey] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
 
     //Apple-specific
-    let mode = avAudioSessionModeFromString(modeStr: ro["appleAVAudioSessionModeId"] as? String)
-    let format = kAudioFormatNumberFromAudioFormatId(formatId: ro["appleAudioFormatId"] as? String)
-    let sampleRate = ro["appleAVSampleRate"] as? Int ?? 44100
-    let numChannels = ro["appleAVNumberOfChannels"] as? Int ?? 1
+    let mode = avAudioSessionModeFromString(modeStr: ro[appleAVAudioSessionModeIdKey] as? String)
+    let format = kAudioFormatNumberFromAudioFormatId(formatId: ro[appleAudioFormatIdKey] as? String)
+    let sampleRate = ro[appleAVSampleRateKey] as? Int ?? 44100
+    let numChannels = ro[appleAVNumberOfChannelsKey] as? Int ?? 1
     //Apple compressed-audio specific
-    let quality = ro["appleAVEncoderAudioQualityId"] as? Int ?? AVAudioQuality.medium.rawValue
+    let quality = ro[appleAVEncoderAudioQualityIdKey] as? Int ?? AVAudioQuality.medium.rawValue
     //Apple LPCM-specific
-    let lpcmBitDepth = ro["appleAVLinearPCMBitDepth"] as? Int ?? 16
-    let lpcmIsBigEndian = ro["appleAVLinearPCMIsBigEndian"] as? Bool ?? true // **** DEFAULT??? ****
-    let lpcmIsFloatKey = ro["appleAVLinearPCMIsFloatKeyIOS"] as? Bool ?? false
-    let lpcmIsNonInterleaved = ro["appleAVLinearPCMIsNonInterleaved"] as? Bool ?? false // **** DEFAULT???? *****
+    let lpcmBitDepth = ro[appleAVLinearPCMBitDepthKey] as? Int ?? 16  // Default to bit-depth of 16
+    let lpcmIsBigEndian = ro[appleAVLinearPCMIsBigEndianKey] as? Bool ?? false  // Default for WAV; see: http://soundfile.sapp.org/doc/WaveFormat/
+    let lpcmIsFloatKey = ro[appleAVLinearPCMIsFloatKeyIOSKey] as? Bool ?? false  // Default to signed integer values
+    let lpcmIsNonInterleaved = ro[appleAVLinearPCMIsNonInterleavedKey] as? Bool ?? false //Default is that samples ARE interleaved; [ L,R; L,R; L,R... ]
 
     print("  COERCED recordingOptions:")
     print("    shared:")
@@ -249,18 +261,20 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     setAudioFileURL(path: audioFilePath)
     self.recMeteringEnabled = recMeteringEnabled
     self.maxRecDurationSec = maxRecDurationSec
-
+    
     func sendStopCodeErrorEvent() {
-      let status = [ EventDetailKey.RecStopCode.name(): RecStopCode.Error.name() ] as [String : String];
-      sendEvent(withName: Event.RecStop.name(), body: status)
+      print("RnAudio.startRecorder.sendStopCodeErrorEvent()")
+      let status = [
+        KEY_REC_STOP_CODE: REC_STOP_CODE_ERROR
+      ] as [String : String];
+      sendEvent(withName: EVENT_ID_REC_STOP, body: status)
     }
 
     func startRecording() {
-      
-      print("startRecording()")
+      print("RnAudio.startRecorder.startRecording()")
       
       //Begin with the "base" AVAudioRecorder settings
-      var avAudioRecorderSettings = [
+      var avAudioRecorderRequestedSettings = [
         AVFormatIDKey: format,
         AVSampleRateKey: sampleRate,
         AVNumberOfChannelsKey: numChannels,
@@ -269,55 +283,79 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       //Merge in format-specific settings
       if (format == Int(kAudioFormatLinearPCM)) {
         //Merge in LPCM-specific settings
-        avAudioRecorderSettings.merge([
-          AVLinearPCMBitDepthKey: lpcmBitDepth,
-          AVLinearPCMIsBigEndianKey: lpcmIsBigEndian,
-          AVLinearPCMIsFloatKey: lpcmIsFloatKey,
-          AVLinearPCMIsNonInterleaved: lpcmIsNonInterleaved
-        ]){(current, _) in current}
+          avAudioRecorderRequestedSettings.merge([
+            AVLinearPCMBitDepthKey: lpcmBitDepth,
+            AVLinearPCMIsBigEndianKey: lpcmIsBigEndian,
+            AVLinearPCMIsFloatKey: lpcmIsFloatKey,
+            AVLinearPCMIsNonInterleaved: lpcmIsNonInterleaved
+          ]){(current, _) in current}
       }
       else {
-        //Merge in compressed settings
-        avAudioRecorderSettings.merge([
-        AVEncoderAudioQualityKey: quality
-      ]){(current, _) in current}
+        //Merge in encoded/compressed settings
+        avAudioRecorderRequestedSettings.merge([
+          AVEncoderAudioQualityKey: quality
+        ]){(current, _) in current}
       }
-
+        
       print("  ")
       print("  ")
       print("  audioFileURL:", self.audioFileURL!)
       print("  ")
-      print("  avAudioRecorderSettings:", avAudioRecorderSettings)
+      print("  avAudioRecorderRequestedSettings:", avAudioRecorderRequestedSettings)
       print("  ")
       print("  ")
 
+      //Begin set of recording options that will actually be used
+      var grantedOptions = [
+        audioFilePathKey: self.audioFileURL!.absoluteString,
+        recMeteringEnabledKey: self.recMeteringEnabled,
+        maxRecDurationSecKey: self.maxRecDurationSec,
+        appleAVAudioSessionModeIdKey: self.audioSession.mode
+      ] as [String: Any]
+        
       do {
-        audioRecorder = try AVAudioRecorder(url: self.audioFileURL!, settings: avAudioRecorderSettings)
+        audioRecorder =
+          try AVAudioRecorder(url: self.audioFileURL!, settings: avAudioRecorderRequestedSettings)
+        
         if (audioRecorder == nil) {
           sendStopCodeErrorEvent()
-          reject("RnAudio", "Error occured during initiating recorder", nil)
-          return 
+          return reject("RnAudio", "Error occured during initiating recorder", nil)
         }
   
         audioRecorder.prepareToRecord()
         audioRecorder.delegate = self
+          
         audioRecorder.isMeteringEnabled = self.recMeteringEnabled
+
+        //Include recording settings
+        grantedOptions[appleAudioFormatIdKey] = audioRecorder.settings[AVFormatIDKey]
+        grantedOptions[appleAVSampleRateKey] = audioRecorder.settings[AVSampleRateKey]
+        grantedOptions[appleAVNumberOfChannelsKey] = audioRecorder.settings[AVNumberOfChannelsKey]
+        if (format == Int(kAudioFormatLinearPCM)) {
+          //LPCM
+          grantedOptions[appleAVLinearPCMBitDepthKey] = audioRecorder.settings[AVLinearPCMBitDepthKey]
+          grantedOptions[appleAVLinearPCMIsBigEndianKey] = audioRecorder.settings[AVLinearPCMIsBigEndianKey]
+          grantedOptions[appleAVLinearPCMIsFloatKeyIOSKey] = audioRecorder.settings[AVLinearPCMIsFloatKey]
+          grantedOptions[appleAVLinearPCMIsNonInterleavedKey] = audioRecorder.settings[AVLinearPCMIsNonInterleaved]
+        }
+        else { //Encoded/compressed
+          //Include compressed settings
+          grantedOptions[appleAVEncoderAudioQualityIdKey] = audioRecorder.settings[AVEncoderAudioQualityKey]
+        }
         
         let isRecordStarted = audioRecorder.record()
         if (!isRecordStarted) {
           sendStopCodeErrorEvent()
-          reject("RnAudio", "Error calling audioRecorder.record()", nil)
-          return
+          return reject("RnAudio", "Error calling audioRecorder.record()", nil)
         }
 
         startRecorderTimer()
-        resolve(self.audioFileURL?.absoluteString)
-        return
 
-      } catch {
+        return resolve(grantedOptions)
+      } 
+      catch {
         sendStopCodeErrorEvent()
-        reject("RnAudio", "startRecording() - Error occured", nil)
-        return
+        return reject("RnAudio", "startRecording() - Error occured", nil)
       }
     }
 
@@ -325,8 +363,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     do {
       try self.audioSession.setCategory(.playAndRecord, mode: mode, options: [
-        AVAudioSession.CategoryOptions.defaultToSpeaker, 
-        AVAudioSession.CategoryOptions.allowBluetooth
+        AVAudioSession.CategoryOptions.defaultToSpeaker
       ])
       try self.audioSession.setActive(true)
 
@@ -335,12 +372,12 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
           if granted {
             startRecording()
           } else {
-            reject("RnAudio", "Record permission not granted", nil)
+            return reject("RnAudio", "Record permission not granted", nil)
           }
         }
       }
     } catch {
-      reject("RnAudio", "Failed to record", nil)
+      return reject("RnAudio", "Failed to record", nil)
     }
   }
 
@@ -350,6 +387,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
+    print("RnAudio.pauseRecorder()")
     if (audioRecorder == nil) {
       return reject("RnAudio", "Recorder is not recording", nil)
     }
@@ -358,7 +396,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     recordTimer = nil;
 
     audioRecorder.pause()
-    resolve("Recorder paused!")
+    return resolve("Recorder paused!")
   }
 
 
@@ -367,6 +405,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
+    print("RnAudio.resumeRecorder()")
 
     if (audioRecorder == nil) {
       return reject("RnAudio", "Recorder is nil", nil)
@@ -387,14 +426,21 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
+    print("RnAudio.stopRecorder()")
     if (audioRecorder == nil) {
-      reject("RnAudio", "Failed to stop recorder. It is already nil.", nil)
-      return
+      return reject("RnAudio", "Failed to stop recorder. It is already nil.", nil)
     }
     stopRecorderInner()
-    resolve(self.audioFileURL?.absoluteString)
+    
+    let status = [ 
+      KEY_REC_STOP_CODE: REC_STOP_CODE_REQUESTED,
+      audioFilePathKey: self.audioFileURL!.absoluteString
+    ] as [String : String];
+
+    return resolve(status)
   }
-  func stopRecorderInner() {
+  func stopRecorderInner() { // requested: Not due to error or timeout
+    print("RnAudio.stopRecorderInner()")
     if (audioRecorder == nil) {
       return
     }
@@ -408,6 +454,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   @objc(startRecorderTimer)
   func startRecorderTimer() -> Void {
+    print("RnAudio.startRecorderTimer()")
     DispatchQueue.main.async {
       self.recordTimer = Timer.scheduledTimer(
         timeInterval: self.subscriptionDurationSec,
@@ -421,30 +468,24 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   @objc(updateRecorderProgress:)
   public func updateRecorderProgress(timer: Timer) -> Void {
+    print("RnAudio.updateRecorderProgress()")
     if (audioRecorder == nil) {
       return
     }
-
     var meterLevel: Float = 0
     if (self.recMeteringEnabled) {
       audioRecorder.updateMeters()
       meterLevel = audioRecorder.averagePower(forChannel: 0)
     }
-
     let status = [
-      EventDetailKey.IsRecording.name(): audioRecorder.isRecording,
-      EventDetailKey.RecElapsedMs.name(): audioRecorder.currentTime * 1000,
-      EventDetailKey.RecMeterLevel.name(): meterLevel,
+      KEY_IS_RECORDING: audioRecorder.isRecording,
+      KEY_REC_ELAPSED_MS: audioRecorder.currentTime * 1000,
+      KEY_REC_METER_LEVEL: meterLevel,
     ] as [String : Any];
-
-    sendEvent(withName: Event.RecUpdate.name(), body: status)
-
+    sendEvent(withName: EVENT_ID_REC_UPDATE, body: status)
     if (audioRecorder.currentTime >= self.maxRecDurationSec) {
-      
-      print("STOPPING!")
-      let status = [ EventDetailKey.RecStopCode.name(): REC_STOP_CODE_MAX_DURATION_REACHED ] as [String : String];
-      sendEvent(withName: Event.RecStop.name(), body: status)
-      
+      let status = [ KEY_REC_STOP_CODE: REC_STOP_CODE_MAX_DURATION_REACHED ] as [String : String];
+      sendEvent(withName: EVENT_ID_REC_STOP, body: status)
       stopRecorderInner()
     }
   }
@@ -452,6 +493,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   // ** IS THIS USED? **
   func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+    print("RnAudio.audioRecorderDidFinishRecording()")
     if !flag {
       print("Failed to stop recorder")
     }
@@ -470,31 +512,37 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
+    print("RnAudio.startPlayer()")
     self.audioSession = AVAudioSession.sharedInstance()
-
     do {
-      try self.audioSession.setCategory(.playAndRecord, mode: .default, options: [AVAudioSession.CategoryOptions.defaultToSpeaker, AVAudioSession.CategoryOptions.allowBluetooth])
+      try self.audioSession.setCategory(
+          .playAndRecord, 
+          mode: .default,
+          options: [
+            AVAudioSession.CategoryOptions.defaultToSpeaker,
+            AVAudioSession.CategoryOptions.allowBluetooth
+          ])
       try self.audioSession.setActive(true)
-    } catch {
-      reject("RnAudio", "Failed to play", nil)
+    } 
+    catch {
+      return reject("RnAudio", "Failed to play", nil)
     }
-
     setAudioFileURL(path: path)
     audioPlayerAsset = AVURLAsset(url: self.audioFileURL!, 
                               options: ["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
     audioPlayerItem = AVPlayerItem(asset: audioPlayerAsset!)
-
     if (audioPlayer == nil) {
       audioPlayer = AVPlayer(playerItem: audioPlayerItem)
     } 
     else {
       audioPlayer.replaceCurrentItem(with: audioPlayerItem)
     }
-
     addPeriodicTimeObserver()
     audioPlayer.play()
-
-    resolve(self.audioFileURL?.absoluteString)
+    let status = [ 
+      audioFilePathKey: self.audioFileURL!.absoluteString
+    ] as [String : String];
+    return resolve(status)
   }
 
 
@@ -503,12 +551,12 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
+    print("RnAudio.pausePlayer()")
     if (audioPlayer == nil) {
       return reject("RnAudio", "Player is not playing", nil)
     }
-
     audioPlayer.pause()
-    resolve("Player paused!")
+    return resolve("Player paused!")
   }
 
 
@@ -517,12 +565,12 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
+    print("RnAudio.resumePlayer()")
     if (audioPlayer == nil) {
       return reject("RnAudio", "Player is not playing", nil)
     }
-
     audioPlayer.play()
-    resolve("Playback resumed")
+    return resolve("Playback resumed")
   }
 
 
@@ -531,18 +579,17 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
-
+    print("RnAudio.resumePlayer()")
     if (audioPlayer == nil) {
       return reject("RnAudio", "Player is already stopped.", nil)
     }
-
     audioPlayer.pause()
-
     self.removePeriodicTimeObserver()
-    
     self.audioPlayer = nil;
-
-    resolve(self.audioFileURL?.absoluteString)
+    let status = [ 
+      audioFilePathKey: self.audioFileURL!.absoluteString
+    ] as [String : String];
+    return resolve(status)
   }
 
 
@@ -552,13 +599,12 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
+    print("RnAudio.seekToPlayer()")
     if (audioPlayer == nil) {
         return reject("RnAudio", "Player is not playing", nil)
     }
-
     audioPlayer.seek(to: CMTime(seconds: time / 1000, preferredTimescale: CMTimeScale(NSEC_PER_SEC)))
-    
-    resolve("Seek successful")
+    return resolve("Seek successful")
   }
 
 
@@ -568,36 +614,37 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
+    print("RnAudio.setVolume()")
     audioPlayer.volume = volume
-    resolve(volume)
+    return resolve(volume)
   }
 
 
   @objc(audioPlayerDidFinishPlaying:)
   public static func audioPlayerDidFinishPlaying(player: AVAudioRecorder) -> Bool {
+    print("RnAudio.audioPlayerDidFinishPlaying()")
     return true
   }
 
 
   func addPeriodicTimeObserver() {
+    print("RnAudio.addPeriodicTimeObserver()")
     let timeScale = CMTimeScale(NSEC_PER_SEC)
-    let time = CMTime(seconds: self.subscriptionDurationSec, 
-                      preferredTimescale: timeScale)
-
-    timeObserverToken = audioPlayer.addPeriodicTimeObserver(forInterval: time,
-                                                            queue: .main) {_ in
+    let time = CMTime(seconds: self.subscriptionDurationSec, preferredTimescale: timeScale)
+    timeObserverToken = audioPlayer.addPeriodicTimeObserver(forInterval: time, queue: .main) {_ in
       if (self.audioPlayer != nil) {
-          self.sendEvent(withName: self.Event.PlayUpdate.name(), body: [
-            self.EventDetailKey.IsMuted.name(): self.audioPlayer.isMuted,
-            self.EventDetailKey.PlayElapsedMs.name(): self.audioPlayerItem.currentTime().seconds * 1000,
-            self.EventDetailKey.PlayDurationMs.name(): self.audioPlayerItem.asset.duration.seconds * 1000,
-          ])
+        self.sendEvent(withName: self.EVENT_ID_PLAY_UPDATE, body: [
+          self.KEY_IS_MUTED: self.audioPlayer.isMuted,
+          self.KEY_PLAY_ELAPSED_MS: self.audioPlayerItem.currentTime().seconds * 1000,
+          self.KEY_PLAY_DURATION_MS: self.audioPlayerItem.asset.duration.seconds * 1000,
+        ])
       }
     }
   }
 
 
   func removePeriodicTimeObserver() {
+    print("RnAudio.removePeriodicTimeObserver()")
     if let timeObserverToken = timeObserverToken {
       audioPlayer.removeTimeObserver(timeObserverToken)
       self.timeObserverToken = nil
