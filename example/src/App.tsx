@@ -6,13 +6,13 @@ import {
   AppleAVAudioSessionModeId,
   AndroidAudioSourceId,
   AndroidAudioEncoderId,
-  AndroidWavByteDepthId,
   PlayUpdateMetadata,
   RecUpdateMetadata,
   RecStopMetadata,
   AppleAVLinearPCMBitDepthId,
   AndroidOutputFormatId,
-  AndroidWavNumberOfChannelsId,
+  NumberOfChannelsId,
+  ByteDepthId,
 } from 'rn-audio'
 import {
   Dimensions,
@@ -137,42 +137,37 @@ const recordingOptions: RecordingOptions = {
 
   //Shared
   audioFilePath: Platform.select({
-  //ios: 'recording.m4a',
-  ios: 'recording.wav',
-    //ios: `${dirs.CacheDir}/recording.wav`,
-    //ios: `recording.wav`,
-  //android: `${dirs.CacheDir}/hello.mp4`,
-  android: `${dirs.CacheDir}/recording.wav`,
+  ios: 'recording.m4a',
+  //ios: 'recording.wav',
+  //ios: `${dirs.CacheDir}/recording.wav`,
+  android: `${dirs.CacheDir}/recording.mp4`,
+  //android: `${dirs.CacheDir}/recording.wav`,
   }),
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,
-  
+  sampleRate: 44100,
+  numChannels: NumberOfChannelsId.ONE,
+  lpcmByteDepth: ByteDepthId.TWO,
+
   //Apple-specific
-  //appleAudioFormatId: AppleAudioFormatId.aac,
-  appleAudioFormatId: AppleAudioFormatId.lpcm,
-  appleAVNumberOfChannels: 1,
-  appleAVSampleRate: 48000,
+  appleAudioFormatId: AppleAudioFormatId.aac,
+  //appleAudioFormatId: AppleAudioFormatId.lpcm,
   appleAVAudioSessionModeId: AppleAVAudioSessionModeId.measurement,
   //Apple encoded/compressed-specific
   appleAVEncoderAudioQualityId: AppleAVEncoderAudioQualityId.high,
   //Apple WAV/LPCM specific
-  appleAVLinearPCMBitDepth: AppleAVLinearPCMBitDepthId.bit16,
   appleAVLinearPCMIsBigEndian: false,
   appleAVLinearPCMIsFloatKeyIOS: false,
   appleAVLinearPCMIsNonInterleaved: false,
 
   //Android-specific
-  //androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
-  androidOutputFormatId: AndroidOutputFormatId.WAV,
-  //androidAudioEncoderId: AndroidAudioEncoderId.AAC,
-  androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
+  androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
+  //androidOutputFormatId: AndroidOutputFormatId.WAV,
+  androidAudioEncoderId: AndroidAudioEncoderId.AAC,
+  //androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
   androidAudioSourceId: AndroidAudioSourceId.MIC,
-  androidAudioSamplingRate: 44100,
   //Android encoded/compressed-specific
   androidAudioEncodingBitRate: 128000,
-  //Android LPCM/WAV-specific
-  androidWavByteDepth: AndroidWavByteDepthId.TWO,
-  androidWavNumberOfChannels: AndroidWavNumberOfChannelsId.ONE,
 }
 
 
@@ -386,13 +381,12 @@ export default class App extends Component<any, State> {
     }
     const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
       ilog('app.recStopCallback() - metadata:', e)
-      const [err, res] = await to<undefined>(this.onStopRecord())
+      const [err,] = await to<undefined>(this.onStopRecord())
       if (err) {
         const errStr = 'In recStopCallback - error calling onStopRecord(): ' + e
         elog(errStr)
         return
       }
-      ilog('app.recStopCallback() - Result:', res)
       return
     }
     const [err, res] = await to<object|string>(audio.startRecorder({
@@ -406,7 +400,7 @@ export default class App extends Component<any, State> {
       return
     }
     ilog('app.onStartRecord() - Result:', res)
-    return res
+    return
   }
 
   private onPauseRecord = async ():Promise<undefined> => {

@@ -32,10 +32,14 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   let DEFAULT_SUBSCRIPTION_DURATION_SEC = 0.5
 
 
-  //Requested/Granted RecordingOption keys
+  //Misc. Keys - for event details, and resolved promise values
+  //Cross-platform
   let audioFilePathKey = "audioFilePath"
   let recMeteringEnabledKey = "recMeteringEnabled"
   let maxRecDurationSecKey = "maxRecDurationSec"
+  let sampleRateKey = "sampleRate"
+  let numChannelsKey = "numChannels"
+  let lpcmByteDepthKey = "lpcmByteDepth"
   //Apple specific
   let appleAVSampleRateKey = "appleAVSampleRate"
   let appleAVNumberOfChannelsKey = "appleAVNumberOfChannels"
@@ -47,6 +51,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   let appleAVLinearPCMIsBigEndianKey = "appleAVLinearPCMIsBigEndian"
   let appleAVLinearPCMIsFloatKeyIOSKey = "appleAVLinearPCMIsFloatKeyIOS"
   let appleAVLinearPCMIsNonInterleavedKey = "appleAVLinearPCMIsNonInterleaved"
+  //Other
+  let grantedOptionsKey = "grantedOptions"
 
   //File path/URL
   //NOTE: Don't set directly; use setAudioFileURL()
@@ -204,20 +210,20 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     let ro = recordingOptions
 
-    print("  RAW recordingOptions:", ro)
+    print("  Requested recordingOptions:", ro)
     print("    shared:")
     print("      audioFilePath: ", ro[audioFilePathKey] as Any)
     print("      recMeteringEnabled: ", ro[recMeteringEnabledKey] as Any)
     print("      maxRecDurationSec: ", ro[maxRecDurationSecKey] as Any)
+    print("      sampleRate: ", ro[sampleRateKey] as Any)
+    print("      numChannels: ", ro[numChannelsKey] as Any)
+    print("      lpcmByteDepth: ", ro[lpcmByteDepthKey] as Any)
     print("    apple:")
     print("      mode: ", ro[appleAVAudioSessionModeIdKey] as Any)
     print("      format: ", ro[appleAudioFormatIdKey] as Any)
-    print("      sampleRate: ", ro[appleAVSampleRateKey] as Any)
-    print("      numChannels: ", ro[appleAVNumberOfChannelsKey] as Any)
     print("      apple-compressed:")
     print("        quality: ", ro[appleAVEncoderAudioQualityIdKey] as Any)
     print("      apple-lpcm:")
-    print("        lpcmBitDepth: ", ro[appleAVLinearPCMBitDepthKey] as Any)
     print("        lpcmIsBigEndian: ", ro[appleAVLinearPCMIsBigEndianKey] as Any)
     print("        lpcmIsFloatKey: ", ro[appleAVLinearPCMIsFloatKeyIOSKey] as Any)
     print("        lpcmIsNonInterleaved: ", ro[appleAVLinearPCMIsNonInterleavedKey] as Any)
@@ -226,16 +232,15 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     let audioFilePath = (ro[audioFilePathKey] as? String) ?? DEFAULT_FILENAME_PLACEHOLDER
     let recMeteringEnabled = (ro[recMeteringEnabledKey] as? Bool) ?? true
     let maxRecDurationSec = (ro[maxRecDurationSecKey] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
-
+    let sampleRate = ro[sampleRateKey] as? Int ?? 44100
+    let numChannels = ro[numChannelsKey] as? Int ?? 1
     //Apple-specific
     let mode = avAudioSessionModeFromString(modeStr: ro[appleAVAudioSessionModeIdKey] as? String)
     let format = kAudioFormatNumberFromAudioFormatId(formatId: ro[appleAudioFormatIdKey] as? String)
-    let sampleRate = ro[appleAVSampleRateKey] as? Int ?? 44100
-    let numChannels = ro[appleAVNumberOfChannelsKey] as? Int ?? 1
     //Apple compressed-audio specific
     let quality = ro[appleAVEncoderAudioQualityIdKey] as? Int ?? AVAudioQuality.medium.rawValue
     //Apple LPCM-specific
-    let lpcmBitDepth = ro[appleAVLinearPCMBitDepthKey] as? Int ?? 16  // Default to bit-depth of 16
+    let lpcmBitDepth = ((ro[lpcmByteDepthKey] as? Int) ?? 2) * 8  // Defaults to 2 bytes * 8 = 16 bits
     let lpcmIsBigEndian = ro[appleAVLinearPCMIsBigEndianKey] as? Bool ?? false  // Default for WAV; see: http://soundfile.sapp.org/doc/WaveFormat/
     let lpcmIsFloatKey = ro[appleAVLinearPCMIsFloatKeyIOSKey] as? Bool ?? false  // Default to signed integer values
     let lpcmIsNonInterleaved = ro[appleAVLinearPCMIsNonInterleavedKey] as? Bool ?? false //Default is that samples ARE interleaved; [ L,R; L,R; L,R... ]
@@ -245,11 +250,11 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("      audioFilePath: ", audioFilePath)
     print("      recMeteringEnabled: ", recMeteringEnabled)
     print("      maxRecDurationSec: ", maxRecDurationSec)
+    print("      sampleRate: ", sampleRate)
+    print("      numChannels: ", numChannels)
     print("    apple:")
     print("      mode: ", mode)
     print("      format: ", format)
-    print("      sampleRate: ", sampleRate)
-    print("      numChannels: ", numChannels)
     print("    apple-compressed:")
     print("      quality: ", quality)
     print("    apple-lpcm:")
@@ -273,7 +278,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     func startRecording() {
       print("RnAudio.startRecorder.startRecording()")
       
-      //Begin with the "base" AVAudioRecorder settings
+      //Begin with the "base" AVAudioRecorder requested settings
       var avAudioRecorderRequestedSettings = [
         AVFormatIDKey: format,
         AVSampleRateKey: sampleRate,
@@ -304,18 +309,10 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       print("  avAudioRecorderRequestedSettings:", avAudioRecorderRequestedSettings)
       print("  ")
       print("  ")
-
-      //Begin set of recording options that will actually be used
-      var grantedOptions = [
-        audioFilePathKey: self.audioFileURL!.absoluteString,
-        recMeteringEnabledKey: self.recMeteringEnabled,
-        maxRecDurationSecKey: self.maxRecDurationSec,
-        appleAVAudioSessionModeIdKey: self.audioSession.mode
-      ] as [String: Any]
         
       do {
-        audioRecorder =
-          try AVAudioRecorder(url: self.audioFileURL!, settings: avAudioRecorderRequestedSettings)
+        audioRecorder = try AVAudioRecorder(url: self.audioFileURL!, 
+                                settings: avAudioRecorderRequestedSettings)
         
         if (audioRecorder == nil) {
           sendStopCodeErrorEvent()
@@ -327,13 +324,24 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
           
         audioRecorder.isMeteringEnabled = self.recMeteringEnabled
 
-        //Include recording settings
-        grantedOptions[appleAudioFormatIdKey] = audioRecorder.settings[AVFormatIDKey]
-        grantedOptions[appleAVSampleRateKey] = audioRecorder.settings[AVSampleRateKey]
-        grantedOptions[appleAVNumberOfChannelsKey] = audioRecorder.settings[AVNumberOfChannelsKey]
+        //Begin set of granted recording options that will actually be used
+        var grantedOptions = [
+          //Cross-platform
+          audioFilePathKey: self.audioFileURL!.absoluteString,
+          recMeteringEnabledKey: self.recMeteringEnabled,
+          maxRecDurationSecKey: self.maxRecDurationSec,
+          sampleRateKey: audioRecorder.settings[AVSampleRateKey]!,
+          numChannelsKey: audioRecorder.settings[AVNumberOfChannelsKey]!, 
+          appleAudioFormatIdKey: audioRecorder.settings[AVFormatIDKey]!,
+          appleAVAudioSessionModeIdKey: self.audioSession.mode
+        ] as [String: Any]
+        
+        //Include apple-specific options granted by the hardware
         if (format == Int(kAudioFormatLinearPCM)) {
           //LPCM
           grantedOptions[appleAVLinearPCMBitDepthKey] = audioRecorder.settings[AVLinearPCMBitDepthKey]
+          grantedOptions[lpcmByteDepthKey] =
+             (audioRecorder.settings[AVLinearPCMBitDepthKey] as! Int) / 8
           grantedOptions[appleAVLinearPCMIsBigEndianKey] = audioRecorder.settings[AVLinearPCMIsBigEndianKey]
           grantedOptions[appleAVLinearPCMIsFloatKeyIOSKey] = audioRecorder.settings[AVLinearPCMIsFloatKey]
           grantedOptions[appleAVLinearPCMIsNonInterleavedKey] = audioRecorder.settings[AVLinearPCMIsNonInterleaved]

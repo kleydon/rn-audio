@@ -68,12 +68,12 @@ export enum AndroidAudioEncoderId {
   LPCM = 999         
 }
 
-export enum AndroidWavByteDepthId {
+export enum ByteDepthId {
   ONE = 1,
   TWO = 2
 }
 
-export enum AndroidWavNumberOfChannelsId {
+export enum NumberOfChannelsId {
   ONE = 1,
   TWO = 2
 }
@@ -137,17 +137,17 @@ export interface RecordingOptions {
   audioFilePath?: string,
   recMeteringEnabled?: boolean,
   maxRecDurationSec?: number,
+  sampleRate?: number,
+  numChannels?: NumberOfChannelsId,
+  lpcmByteDepth?: ByteDepthId,
   
   //Apple-specific
-  appleAVSampleRate?: number,
-  appleAVNumberOfChannels?: number,
   appleAudioFormatId?: AppleAudioFormatId,
   appleAVAudioSessionModeId?: AppleAVAudioSessionModeId,
   //Apple encoded/compressed-specific
   appleAVEncoderBitRate?: number,
   appleAVEncoderAudioQualityId?: AppleAVEncoderAudioQualityId,
   //Apple LPCM/WAV-specific
-  appleAVLinearPCMBitDepth?: AppleAVLinearPCMBitDepthId,
   appleAVLinearPCMIsBigEndian?: boolean,
   appleAVLinearPCMIsFloatKeyIOS?: boolean,
   appleAVLinearPCMIsNonInterleaved?: boolean,
@@ -157,11 +157,7 @@ export interface RecordingOptions {
   androidOutputFormatId?: AndroidOutputFormatId,
   androidAudioEncoderId?: AndroidAudioEncoderId,
   //Android encoded/compressed-specific
-  androidAudioEncodingBitRate?: number,
-  androidAudioSamplingRate?: number,
-  //Android LPCM/WAV-specific
-  androidWavByteDepth?: AndroidWavByteDepthId,
-  androidWavNumberOfChannels?: AndroidWavNumberOfChannelsId
+  androidAudioEncodingBitRate?: number
 }
 
 enum EventId {
@@ -177,17 +173,18 @@ enum RecStopCode {
 }
 
 export type RecStopMetadata = {
+  audioFilePath?: string,
   recStopCode: RecStopCode,
 }
 
 export type RecUpdateMetadata = {
-  isRecording?: boolean,
+  isRecording: boolean,
   recElapsedMs: number,
   recMeterLevel?: number,
 }
 
 export type PlayUpdateMetadata = {
-  isMuted?: boolean,
+  isMuted: boolean,
   playElapsedMs: number,
   playDurationMs: number,
 }
@@ -258,8 +255,7 @@ export class Audio {
     }
 
     //If number of channels > 2
-    if (o.appleAVNumberOfChannels && o.appleAVNumberOfChannels > 2 || 
-        o.androidWavNumberOfChannels && o.androidWavNumberOfChannels > 2) {
+    if (o.numChannels && o.numChannels > 2) {
       elog('Number of channels must be < 2.')
       res = false
     }
@@ -275,10 +271,10 @@ export class Audio {
         res = false
         elog(fileIsWavPrefixStr + 'androidAudioEncoderId is:' + o.androidAudioEncoderId)
       }
-      if (o.androidWavByteDepth && 
-          (o.androidWavByteDepth === 1 || o.androidWavByteDepth === 2) === false) {
+      if (o.wavByteDepth && 
+          (o.wavByteDepth === 1 || o.wavByteDepth === 2) === false) {
         res = false
-        elog(fileIsWavPrefixStr + 'androidWavByteDepth is:' + o.androidWavByteDepth)
+        elog(fileIsWavPrefixStr + 'wavByteDepth is:' + o.wavByteDepth)
       }
       if (o.appleAudioFormatId !== AppleAudioFormatId.lpcm) {
         res = false

@@ -81,16 +81,19 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     PlayDurationMs("playDurationMs"),
   }
 
+  //Misc. Keys - for event details, and resolved promise values
+  //Cross-platform
   private val audioFilePathKey = "audioFilePath"
   private val recMeteringEnabledKey = "recMeteringEnabled"
   private val maxRecDurationSecKey = "maxRecDurationSec"
+  private val sampleRateKey = "sampleRate"
+  private val numChannelsKey = "numChannels"
+  private val lpcmByteDepthKey = "lpcmByteDepth"
+  //Android-specific
   private val androidAudioSourceIdKey = "androidAudioSourceId"
   private val androidOutputFormatIdKey = "androidOutputFormatId"
   private val androidAudioEncoderIdKey = "androidAudioEncoderId"
   private val androidAudioEncodingBitRateKey = "androidAudioEncodingBitRate"
-  private val androidAudioSamplingRateKey = "androidAudioSamplingRate"
-  private val androidWavByteDepthKey = "androidWavByteDepth"
-  private val androidWavNumberOfChannelsKey = "androidWavNumberOfChannels"
 
   private var audioFileURL = "${reactContext.cacheDir}/$DEFAULT_FILE_NAME"
   private var recMeteringEnabled = false
@@ -109,7 +112,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   //Wav recording specific
   private var sampleRate:Int = 44100
   private var numChannels:Int = 1
-  private var byteDepth:Int = 2
+  private var lpcmByteDepth:Int = 2
   private var maxNumSamples:Int = 0 //Temporary; reassigned. Note: Int is more than enough for > 4hrs @ 48000 samples/sec
   private var audioRecord:AudioRecord? = null
   private var frameBufferSize:Int? = null
@@ -123,7 +126,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   private var mediaPlayer: MediaPlayer? = null
   private var mTask: TimerTask? = null
   private var mTimer: Timer? = null
-
 
 
   //Perhaps this function is unnecessary, if permissions taken care of 
@@ -175,14 +177,51 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
 
   @ReactMethod
+  private fun sendEvent(reactContext: ReactContext,
+                        eventName: String,
+                        params: WritableMap?) {
+    Log.d(tag, "RnAudio.sendEvent()")
+    reactContext
+      .getJSModule<RCTDeviceEventEmitter>(RCTDeviceEventEmitter::class.java)
+      .emit(eventName, params)
+  }
+
+  private fun createRecStopResult(): WritableMap {
+    val obj = Arguments.createMap()
+    obj.putString(EventDetailKey.RecStopCode.str, recStopCode.str)
+    obj.putString(audioFilePathKey, "file:///$audioFileURL")
+    return obj
+  }
+  private fun sendRecStopEvent() {
+    sendEvent(reactContext, Event.RecStop.str, createRecStopResult())
+  }
+
+  private fun sendRecUpdateEvent(elapsedMs:Double, isRecording:Boolean, meterLevelDb:Double?) {
+    val obj = Arguments.createMap()
+    obj.putDouble(EventDetailKey.RecElapsedMs.str, elapsedMs)
+    obj.putBoolean(EventDetailKey.IsRecording.str, isRecording)
+    if (recMeteringEnabled && meterLevelDb != null) {
+      obj.putDouble(EventDetailKey.RecMeterLevel.str, meterLevelDb)
+    }
+    sendEvent(reactContext, Event.RecUpdate.str, obj)
+  }
+
+  private fun sendPlayUpdateEvent(elapsedMs:Int, durationMs:Int) {
+    val obj = Arguments.createMap()
+    obj.putDouble(EventDetailKey.PlayElapsedMs.str, elapsedMs.toDouble())
+    obj.putDouble(EventDetailKey.PlayDurationMs.str, durationMs.toDouble())
+    sendEvent(reactContext, Event.PlayUpdate.str, obj)
+  }
+
+
+  @ReactMethod
   fun startRecorder(recordingOptions: ReadableMap, promise: Promise) {
 
     Log.d(tag, "RnAudio.startRecorder()")
 
-    //NOTE: To determine the recording settings ACTUALLY used for MediaRecorder, we need:
-    // * API 24: ActiveRecordingConfiguration
-    // * API 29: MediaRecorder.getActiveRecordingConfiguration()
-    // Not yet ready to bump up the minimum sdk for this...
+    if (mediaRecorder != null) {
+      return promise.reject("RnAudio.startRecorder()", "mediaRecorder currently exists.")
+    }
 
     isRecordingWav = false
     recStopCode = RecStopCode.Requested //Start by assuming a no-error result
@@ -197,31 +236,34 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
     //Set/coerce recording options
     val ro = recordingOptions
+    //Cross-platform
     setAudioFileURL(if (ro.hasKey(audioFilePathKey)) ro.getString(audioFilePathKey) else DEFAULT_FILE_NAME)
     recMeteringEnabled = if (ro.hasKey(recMeteringEnabledKey)) ro.getBoolean(recMeteringEnabledKey) else true
     var maxRecDurationSec = if (ro.hasKey(maxRecDurationSecKey)) ro.getDouble(maxRecDurationSecKey) else DEFAULT_MAX_RECORDING_DURATION_SEC
     if (maxRecDurationSec > ABSOLUTE_MAX_DURATION_SEC) {
       maxRecDurationSec = ABSOLUTE_MAX_DURATION_SEC
     }
-    //Android specific
+    this.sampleRate = if (ro.hasKey(sampleRateKey)) ro.getInt(sampleRateKey) else 44100
+    this.numChannels = if (ro.hasKey(numChannelsKey)) ro.getInt(numChannelsKey) else 1
+    //Android-specific
     val audioSourceId = if (ro.hasKey(androidAudioSourceIdKey)) ro.getInt(androidAudioSourceIdKey) else MediaRecorder.AudioSource.MIC
     val outputFormatId = if (ro.hasKey(androidOutputFormatIdKey)) ro.getInt(androidOutputFormatIdKey) else MediaRecorder.OutputFormat.MPEG_4
     val audioEncoderId = if (ro.hasKey(androidAudioEncoderIdKey)) ro.getInt(androidAudioEncoderIdKey) else MediaRecorder.AudioEncoder.AAC
+    //Android-non-wav-specific
     val encodingBitRate = if (ro.hasKey(androidAudioEncodingBitRateKey)) ro.getInt(androidAudioEncodingBitRateKey) else 128000
-    sampleRate = if (ro.hasKey(androidAudioSamplingRateKey)) ro.getInt(androidAudioSamplingRateKey) else 44100
 
     Log.i(tag, " ")
     Log.i(tag, "Coerced:")
     Log.i(tag, "  audioFileURL: " + audioFileURL)
     Log.i(tag, "  recMeteringEnabled: " + recMeteringEnabled)
     Log.i(tag, "  maxRecDurationSec: " + maxRecDurationSec)
+    Log.i(tag, "  sampleRate:" + sampleRate)
+    Log.i(tag, "  numChannels:" + numChannels)
     Log.i(tag, "  audioSourceId: " + audioSourceId)
     Log.i(tag, "  outputFormatId: " + outputFormatId)
     Log.i(tag, "  audioEncoderId: " + audioEncoderId)
     Log.i(tag, "  encodingBitRate: " + encodingBitRate)
-    Log.i(tag, "  sampleRate:" + sampleRate)
-    Log.i(tag, "  byteDepth:" + byteDepth)
-  
+
     //Configure media recorder
     if (mediaRecorder == null) {
       if (Build.VERSION.SDK_INT < 31) {
@@ -232,13 +274,15 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
         mediaRecorder = MediaRecorder(reactContext) //New constructor
       }
     }
+
+    mediaRecorder!!.setOutputFile(audioFileURL)
+    mediaRecorder!!.setAudioSamplingRate(sampleRate)
+    mediaRecorder!!.setAudioChannels(numChannels)
     mediaRecorder!!.setAudioSource(audioSourceId)
     mediaRecorder!!.setOutputFormat(outputFormatId)
     mediaRecorder!!.setAudioEncoder(audioEncoderId)
     mediaRecorder!!.setAudioEncodingBitRate(encodingBitRate)
-    mediaRecorder!!.setAudioSamplingRate(sampleRate)
-    mediaRecorder!!.setOutputFile(audioFileURL)
-    
+   
     try {
       mediaRecorder!!.prepare()
       pausedRecordTime = 0L
@@ -248,48 +292,60 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
       recorderRunnable = object : Runnable {
         override fun run() {
           val time = SystemClock.elapsedRealtime() - systemTime - totalPausedRecordTime
-          Log.i(tag, "time.toDouble():" + time.toDouble() + " maxRecDurationSec*1000:" + maxRecDurationSec*1000)
           if (time.toDouble() > maxRecDurationSec * 1000) {
             if (mediaRecorder != null) {
               Log.i(tag, "Max recording duration reached")
               Log.i(tag, "Sending stoppage event")
-              val obj = Arguments.createMap()
               recStopCode = RecStopCode.MaxDurationReached
-              obj.putString(EventDetailKey.RecStopCode.str, recStopCode.str)
-              sendEvent(reactContext, Event.RecStop.str, obj)
-              Log.i(tag, "Stopping recorder")
+              sendRecStopEvent()
               stopRecorder(promise)
             }
             return
           }
-          val obj = Arguments.createMap()
-          obj.putDouble(EventDetailKey.RecElapsedMs.str, time.toDouble())
-          obj.putBoolean(EventDetailKey.IsRecording.str, true)
+
+          //Calculate meterLevelDb
+          var meterLevelDb:Double? = null
           if (recMeteringEnabled) {
-              var maxAmplitude = 0
-              if (mediaRecorder != null) {
-                  maxAmplitude = mediaRecorder!!.maxAmplitude
-              }
-              var dB = -160.0
-              val maxAudioSize = 32767.0
-              if (maxAmplitude > 0) {
-                  dB = 20 * log10(maxAmplitude / maxAudioSize)
-              }
-              obj.putDouble(EventDetailKey.RecMeterLevel.str, dB)
+            var maxAmplitude = 0.0
+            if (mediaRecorder != null) {
+              maxAmplitude = mediaRecorder!!.maxAmplitude.toDouble()
+            }
+            meterLevelDb = -160.0
+            val maxAudioSize:Double = 32767.0
+            if (maxAmplitude > 0) {
+                meterLevelDb = 20 * log10(maxAmplitude / maxAudioSize)
+            }
           }
-          sendEvent(reactContext, Event.RecUpdate.str, obj)
+          val isRecording = true
+          sendRecUpdateEvent(time.toDouble(), isRecording, meterLevelDb!!)
+
           recordHandler!!.postDelayed(this, subscriptionDurationMs.toLong())
         }
       }
       (recorderRunnable as Runnable).run()
 
-      val obj = Arguments.createMap()
-      obj.putString("audioFilePath", "file:///$audioFileURL")
-      promise.resolve(obj)
+      //NOTE: To determine the recording settings ACTUALLY used for MediaRecorder, we need:
+      // * API 24: ActiveRecordingConfiguration
+      // * API 29: MediaRecorder.getActiveRecordingConfiguration()
+      // Not yet ready to bump up the minimum sdk for this, 
+      // so we're making some assumptions.
+      // Hopefully the metadata will be in the saved files anyway.
+      val grantedOptions = Arguments.createMap()
+      //Cross-platform
+      grantedOptions.putString(audioFilePathKey, "file:///$audioFileURL")
+      grantedOptions.putBoolean(recMeteringEnabledKey, recMeteringEnabled)
+      grantedOptions.putDouble(maxRecDurationSecKey, maxRecDurationSec)
+      grantedOptions.putDouble(sampleRateKey, sampleRate.toDouble())
+      grantedOptions.putDouble(numChannelsKey, numChannels.toDouble())
+      //Android specific
+      grantedOptions.putDouble(androidAudioSourceIdKey, audioSourceId.toDouble())
+      grantedOptions.putDouble(androidOutputFormatIdKey, outputFormatId.toDouble())
+      grantedOptions.putDouble(androidAudioEncoderIdKey, audioEncoderId.toDouble())
+      promise.resolve(grantedOptions)
     } 
     catch (e: Exception) {
-      Log.e(tag, "Exception: ", e)
-      return promise.reject("startRecord", e.message)
+      Log.e(tag, "RN.startRecorder() - Exception: ", e)
+      return promise.reject("Rn.startRecorder", e.message)
     }
   }
 
@@ -297,15 +353,15 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   fun pauseRecorder(promise: Promise) {
     Log.d(tag, "RnAudio.pauseRecorder()")
     if (mediaRecorder == null) {
-      return promise.reject("pauseRecorder", "Recorder is null.")
+      return promise.reject("RnAudio.pauseRecorder()", "Recorder is null.")
     }
-
     try {
       mediaRecorder!!.pause()
       pausedRecordTime = SystemClock.elapsedRealtime()
       recorderRunnable?.let { recordHandler!!.removeCallbacks(it) }
       return promise.resolve("Recorder paused.")
-    } catch (e: Exception) {
+    } 
+    catch (e: Exception) {
       Log.e(tag, "pauseRecorder exception: " + e.message)
       return promise.reject("pauseRecorder", e.message)
     }
@@ -317,14 +373,14 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     if (mediaRecorder == null) {
       return promise.reject("resumeRecorder", "Recorder is null.")
     }
-
     try {
       totalPausedRecordTime += SystemClock.elapsedRealtime() - pausedRecordTime
       pausedRecordTime = 0L
       mediaRecorder!!.resume()
       recorderRunnable?.let { recordHandler!!.postDelayed(it, subscriptionDurationMs.toLong()) }
       return promise.resolve("Recorder resumed.")
-    } catch (e: Exception) {
+    } 
+    catch (e: Exception) {
       Log.e(tag, "Recorder resume: " + e.message)
       return promise.reject("resumeRecorder", e.message)
     }
@@ -351,10 +407,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
       return promise.reject("stopRecorder", exception.message)
     }
 
-    val obj = Arguments.createMap()
-    obj.putString(EventDetailKey.RecStopCode.str, recStopCode.str)
-    obj.putString(audioFilePathKey, "file:///$audioFileURL")
-    return promise.resolve(obj)
+    return promise.resolve(createRecStopResult())
   }
 
   //setVolume()
@@ -374,7 +427,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   }
 
   @ReactMethod
-  fun startPlayer(path: String, httpHeaders: ReadableMap?, playbackVolume:Double, promise: Promise) {
+  fun startPlayer(uri: String, httpHeaders: ReadableMap?, playbackVolume:Double, promise: Promise) {
     Log.i(tag, "RnAudio.startPlayer()")
 
     if (mediaPlayer != null) {
@@ -393,61 +446,44 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
     setVolume(playbackVolume, promise)
 
+    var resolvedUri = if (uri == "DEFAULT") "${reactContext.cacheDir}/$DEFAULT_FILE_NAME" else uri
+
     try {
-      if ((path == "DEFAULT")) {
-        mediaPlayer!!.setDataSource("${reactContext.cacheDir}/$DEFAULT_FILE_NAME")
+      if (httpHeaders != null) {
+        val headers: MutableMap<String, String?> = HashMap<String, String?>()
+        val iterator = httpHeaders.keySetIterator()
+        while (iterator.hasNextKey()) {
+          val key = iterator.nextKey()
+          headers.put(key, httpHeaders.getString(key))
+        }
+        mediaPlayer!!.setDataSource(currentActivity!!.applicationContext, Uri.parse(uri), headers)
       } 
       else {
-        if (httpHeaders != null) {
-          val headers: MutableMap<String, String?> = HashMap<String, String?>()
-          val iterator = httpHeaders.keySetIterator()
-          while (iterator.hasNextKey()) {
-              val key = iterator.nextKey()
-              headers.put(key, httpHeaders.getString(key))
-          }
-          mediaPlayer!!.setDataSource(currentActivity!!.applicationContext, Uri.parse(path), headers)
-        } 
-        else {
-          mediaPlayer!!.setDataSource(path)
-        }
+        mediaPlayer!!.setDataSource(resolvedUri)
       }
-    
+      
       mediaPlayer!!.setOnPreparedListener { mp ->
         Log.d(tag, "mediaplayer prepared and start")
         mp.start()
-        /**
-          * Set timer task to send event to RN.
-          */
+        //Set timer task to send event to RN.
         mTask = object : TimerTask() {
           override fun run() {
-            val obj = Arguments.createMap()
-            obj.putInt(EventDetailKey.PlayElapsedMs.str, mp.currentPosition)
-            obj.putInt(EventDetailKey.PlayDurationMs.str, mp.duration)
-            sendEvent(reactContext, Event.PlayUpdate.str, obj)
+            sendPlayUpdateEvent(mp.currentPosition, mp.duration)
           }
         }
-
         mTimer = Timer()
         mTimer!!.schedule(mTask, 0, subscriptionDurationMs.toLong())
-        val resolvedPath = if (((path == "DEFAULT"))) "${reactContext.cacheDir}/$DEFAULT_FILE_NAME" else path
-        promise.resolve(resolvedPath)
       }
 
-      /**
-        * Detect when finish playing.
-        */
+      //Detect when finish playing
       mediaPlayer!!.setOnCompletionListener { mp ->
-        /**
-          * Send last event
-          */
-        val obj = Arguments.createMap()
-        obj.putInt(EventDetailKey.PlayElapsedMs.str, mp.duration)
-        obj.putInt(EventDetailKey.PlayDurationMs.str, mp.duration)
-        sendEvent(reactContext, Event.PlayUpdate.str, obj)
-        /**
-          * Reset player.
-          */
-        Log.d(tag, "Plays completed.")
+        
+        Log.d(tag, "Playback completed.")
+
+        //Send final event        
+        sendPlayUpdateEvent(mp.duration, mp.duration)
+        
+        //Reset player
         mTimer!!.cancel()
         mp.stop()
         mp.release()
@@ -455,11 +491,14 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
       }
 
       mediaPlayer!!.prepare()
+
+      return promise.resolve(resolvedUri)
     } 
     catch (e: Exception) {
-      var errMsg = "startPlay() error: " + e 
-      Log.e(tag, errMsg)
-      return promise.reject("startPlay", e.message)
+      val msgPrefix = "RnAudio.startPlayer(): "
+      val errMsg = "Error: " + e.message
+      Log.e(tag, msgPrefix + errMsg)
+      return promise.reject(msgPrefix, errMsg)
     }
   }
 
@@ -467,38 +506,41 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   fun pausePlayer(promise: Promise) {
     Log.d(tag, "RnAudio.pausePlayer()")
     if (mediaPlayer == null) {
-      return promise.reject("pausePlay", "mediaPlayer is null on pause.")
+      val msgPrefix = "RnAudio.pausePlayer(): "
+      val msg = "mediaPlayer is null on pause."
+      Log.i(tag, msgPrefix + msg)
+      return promise.reject(msgPrefix, msg)
     }
-
     try {
       mediaPlayer!!.pause()
       return promise.resolve("pause player")
     } catch (e: Exception) {
-      Log.e(tag, "pausePlay exception: " + e.message)
-      return promise.reject("pausePlay", e.message)
+      val msgPrefix = "RnAudio.pausePlayer(): "
+      val errMsg = "Error: " + e.message
+      Log.e(tag, msgPrefix + errMsg)
+      return promise.reject(msgPrefix, errMsg)
     }
   }
 
   @ReactMethod
   fun resumePlayer(promise: Promise) {
     Log.i(tag, "RnAudio.resumePlayer()")
-
     if (mediaPlayer == null) {
-      return promise.reject("resume", "mediaPlayer is null on resume.")
+      return promise.reject("RnAudio.resumePlayer()", "mediaPlayer null on resume.")
     }
-
     if (mediaPlayer!!.isPlaying) {
-      return promise.reject("resume", "mediaPlayer is already running.")
+      return promise.reject("RnAudio.resumePlayer()", "Player already running.")
     }
-
     try {
       mediaPlayer!!.seekTo(mediaPlayer!!.currentPosition)
       mediaPlayer!!.start()
-      return promise.resolve("resume player")
+      return promise.resolve("RnAudio.resumePlayer() - resuming player")
     } 
     catch (e: Exception) {
-      Log.e(tag, "mediaPlayer resume: " + e.message)
-      return promise.reject("resume", e.message)
+      val msgPrefix = "RnAudio.resumePlayer(): "
+      val errMsg = "Error: " + e.message
+      Log.e(tag, msgPrefix + errMsg)
+      return promise.reject(msgPrefix, errMsg)
     }
   }
 
@@ -508,18 +550,18 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     if (mTimer != null) {
       mTimer!!.cancel()
     }
-
     if (mediaPlayer == null) {
-      return promise.resolve("Already stopped player")
+      return promise.resolve("RnAudio.stopPlayer() - Already stopped player")
     }
-
     try {
       mediaPlayer!!.release()
       mediaPlayer = null
-      return promise.resolve("stopped player")
+      return promise.resolve("RnAudio.stopPlayer() - Stopped player.")
     } catch (e: Exception) {
-      Log.e(tag, "stopPlay exception: " + e.message)
-      return promise.reject("stopPlay", e.message)
+      val msgPrefix = "RnAudio.stopPlayer(): "
+      val errMsg = "Error: " + e.message
+      Log.e(tag, msgPrefix + errMsg)
+      return promise.reject(msgPrefix, errMsg)
     }
   }
 
@@ -527,27 +569,17 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   fun seekToPlayer(time: Double, promise: Promise) {
     Log.d(tag, "RnAudio.seekToPlayer()")
     if (mediaPlayer == null) {
-      return promise.reject("seekTo", "mediaPlayer is null on seek.")
+      return promise.reject("RnAudio.seekToPlayer() - Error:", "mediaPlayer null on seek.")
     }
     mediaPlayer!!.seekTo(time.toInt())
-    return promise.resolve("pause player")
-  }
-
-  @ReactMethod
-  private fun sendEvent(reactContext: ReactContext,
-                        eventName: String,
-                        params: WritableMap?) {
-    Log.d(tag, "RnAudio.sendEvent()")
-    reactContext
-      .getJSModule<RCTDeviceEventEmitter>(RCTDeviceEventEmitter::class.java)
-      .emit(eventName, params)
+    return promise.resolve("RnAudio.seekToPlayer(): Seek successful")
   }
 
   @ReactMethod
   fun setSubscriptionDuration(sec: Double, promise: Promise) {
     Log.d(tag, "RnAudio.setSubscriptionDuration()")
     subscriptionDurationMs = (sec * 1000).toInt()
-    return promise.resolve("setSubscriptionDuration: $subscriptionDurationMs")
+    return promise.resolve("RnAudio.setSubscriptionDuration() - Set subscription duration: $subscriptionDurationMs")
   }
 
 
@@ -563,46 +595,51 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     //Set/coerce recording options
     val ro = requestedOptions
     setAudioFileURL(if (ro.hasKey(audioFilePathKey)) ro.getString(audioFilePathKey) else DEFAULT_WAV_FILE_NAME)
-    val recMeteringEnabled = if (ro.hasKey(recMeteringEnabledKey)) ro.getBoolean(recMeteringEnabledKey) else true
-    val maxRecDurationSec = if (ro.hasKey(maxRecDurationSecKey)) ro.getDouble(maxRecDurationSecKey) else DEFAULT_MAX_RECORDING_DURATION_SEC
+    this.recMeteringEnabled = if (ro.hasKey(recMeteringEnabledKey)) ro.getBoolean(recMeteringEnabledKey) else true
+    this.sampleRate = if (ro.hasKey(sampleRateKey)) ro.getInt(sampleRateKey) else 44100
+    this.numChannels = if (ro.hasKey(numChannelsKey)) ro.getInt(numChannelsKey) else 1
+    var maxRecDurationSec = if (ro.hasKey(maxRecDurationSecKey)) ro.getDouble(maxRecDurationSecKey) else DEFAULT_MAX_RECORDING_DURATION_SEC
+    maxNumSamples = sampleRate * maxRecDurationSec.toInt()
+    if (maxNumSamples > (sampleRate * ABSOLUTE_MAX_DURATION_SEC)) { //Coerce if necessary
+      maxNumSamples = (sampleRate * ABSOLUTE_MAX_DURATION_SEC).toInt()
+    }
+    if (maxRecDurationSec > (maxNumSamples / sampleRate)) { //Coerce if necessary
+      maxRecDurationSec = maxNumSamples.toDouble() / sampleRate.toDouble()
+    }
     //Android specific
     val audioSourceId = if (ro.hasKey(androidAudioSourceIdKey)) ro.getInt(androidAudioSourceIdKey) else MediaRecorder.AudioSource.MIC
     val outputFormatId = if (ro.hasKey(androidOutputFormatIdKey)) ro.getInt(androidOutputFormatIdKey) else 999 //Co-opting 999 for WAV
     val audioEncoderId = if (ro.hasKey(androidAudioEncoderIdKey)) ro.getInt(androidAudioEncoderIdKey) else 999 //Co-opting 999 for LPCM
-    sampleRate = if (ro.hasKey(androidAudioSamplingRateKey)) ro.getInt(androidAudioSamplingRateKey) else 44100
     //Android WAV/LPCM-specific
-    byteDepth = if (ro.hasKey(androidWavByteDepthKey)) ro.getInt(androidWavByteDepthKey) else 2
-    numChannels = if (ro.hasKey(androidWavNumberOfChannelsKey)) ro.getInt(androidWavNumberOfChannelsKey) else 1
+    this.lpcmByteDepth = if (ro.hasKey(lpcmByteDepthKey)) ro.getInt(lpcmByteDepthKey) else 2
 
     Log.i(tag, " ")
     Log.i(tag, "Coerced:")
     Log.i(tag, "  audioFilePath: " + audioFileURL)
     Log.i(tag, "  recMeteringEnabled: " + recMeteringEnabled)
     Log.i(tag, "  maxRecDurationSec: " + maxRecDurationSec)
+    Log.i(tag, "  sampleRate:" + sampleRate)
+    Log.i(tag, "  numChannels:" + numChannels)
     Log.i(tag, "  audioSourceId: " + audioSourceId)
     Log.i(tag, "  outputFormatId: " + outputFormatId)
     Log.i(tag, "  audioEncoderId: " + audioEncoderId)
-    Log.i(tag, "  sampleRate:" + sampleRate)
-    Log.i(tag, "  byteDepth:" + byteDepth)
-    Log.i(tag, "  numChannels:" + numChannels)
-
-    maxNumSamples = sampleRate * maxRecDurationSec.toInt()
-    if (maxNumSamples > (sampleRate * ABSOLUTE_MAX_DURATION_SEC)) { //Coerce if necessary
-      maxNumSamples = (sampleRate * ABSOLUTE_MAX_DURATION_SEC).toInt() // *** INT BIG ENOUGH??? ***
-    }
- 
+    Log.i(tag, "  lpcmByteDepth:" + lpcmByteDepth)
     Log.i(tag, " ") 
     Log.i(tag, "  maxNumSamples:" + maxNumSamples)
 
-    tempRawPCMDataFilePath = "${reactContext.cacheDir}" + "/" + "temp.pcm"
+    tempRawPCMDataFilePath = "${reactContext.cacheDir}" + "/" + "temp.lpcm"
     
     val minFrameBufferSize = AudioRecord.getMinBufferSize(sampleRate, getChannelConfig(), getPCMEncoding())
     if (minFrameBufferSize < 0) {
       if (minFrameBufferSize == AudioRecord.ERROR_BAD_VALUE) {
-        Log.e(tag, "Error: minFrameBufferSize == " + AudioRecord.ERROR_BAD_VALUE + ". Recording parameters not supported by hardware, or invalid parameter passed.")
+        Log.e(tag, "RnAudio.initAndroidWavRecorderOptions() - Error: minFrameBufferSize == " + 
+                    AudioRecord.ERROR_BAD_VALUE + 
+                    ". Recording parameters not supported by hardware, or invalid parameter passed.")
       }
       if (minFrameBufferSize == AudioRecord.ERROR) {
-        Log.e(tag, "Error: minFrameBufferSize == " +  AudioRecord.ERROR + ". Implementation unable to query hardware for input properties.")
+        Log.e(tag, "RnAudio.initAndroidWavRecorderOptions() - Error: minFrameBufferSize == " + 
+                    AudioRecord.ERROR + 
+                    ". Implementation unable to query hardware for input properties.")
       }
       return false
     }
@@ -630,21 +667,29 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     //update these parameters from the AudioRecord instance.
     sampleRate = audioRecord!!.getSampleRate()
     numChannels = audioRecord!!.getChannelCount()
-    byteDepth = if (audioRecord!!.getAudioFormat() == android.media.AudioFormat.ENCODING_PCM_8BIT) 1 else 2
+    lpcmByteDepth = if (audioRecord!!.getAudioFormat() == android.media.AudioFormat.ENCODING_PCM_8BIT) 1 else 2
 
-    //Granted params   
-    grantedOptions.putString(androidAudioSourceIdKey, audioFileURL)
+    //Granted parameters: 
+    //Cross-platform 
+    grantedOptions.putString(audioFilePathKey, "file:///$audioFileURL")
     grantedOptions.putBoolean(recMeteringEnabledKey, recMeteringEnabled)
     grantedOptions.putDouble(maxRecDurationSecKey, maxRecDurationSec)
+    grantedOptions.putDouble(sampleRateKey, sampleRate.toDouble())
+    grantedOptions.putDouble(numChannelsKey, numChannels.toDouble())
+    //Android-specific
     grantedOptions.putDouble(androidAudioSourceIdKey, audioSourceId.toDouble())
     grantedOptions.putDouble(androidOutputFormatIdKey, outputFormatId.toDouble())
     grantedOptions.putDouble(androidAudioEncoderIdKey, audioEncoderId.toDouble())
-    grantedOptions.putDouble(androidAudioSamplingRateKey, sampleRate.toDouble())
-    grantedOptions.putDouble(androidWavNumberOfChannelsKey, numChannels.toDouble())
-    grantedOptions.putDouble(androidWavByteDepthKey, byteDepth.toDouble())
+    //Android WAV/LPCM-specific
+    grantedOptions.putDouble(lpcmByteDepthKey, lpcmByteDepth.toDouble())
 
     return true
   }
+
+
+  // Recording WAV
+  // Since MediaRecorder does not record WAV/LPCM, we use methods below based on AudioRecord.
+
 
   @ReactMethod
   public fun startAndroidWavRecorder(recordingOptions: ReadableMap, promise:Promise) {
@@ -672,13 +717,9 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     recorderRunnable = object : Runnable {
       override fun run() {
         val time = SystemClock.elapsedRealtime() - systemTime - totalPausedRecordTime
-        val obj = Arguments.createMap()
-        obj.putDouble(EventDetailKey.RecElapsedMs.str, time.toDouble())
-        obj.putBoolean(EventDetailKey.IsRecording.str, true)
-        if (recMeteringEnabled) {
-          obj.putDouble(EventDetailKey.RecMeterLevel.str, calcWavMeteringVolume())
-        }
-        sendEvent(reactContext, Event.RecUpdate.str, obj)
+        var meterLevelDb = if (recMeteringEnabled)  calcWavMeterLevelDb() else null
+        val isRecording = true
+        sendRecUpdateEvent(time.toDouble(), isRecording, meterLevelDb)
         recordHandler!!.postDelayed(this, subscriptionDurationMs.toLong())
       }
     }
@@ -712,7 +753,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
           val bytesRead = audioRecord!!.read(wavFrameData!!, 0, wavFrameData!!.size)
           if (bytesRead > 0 && ++frameCount > 2) { // skip first 2, to eliminate "click sound"
 
-            val bytesPerPacket:Int = byteDepth * numChannels
+            val bytesPerPacket:Int = lpcmByteDepth * numChannels
             var numSamplesToProcess:Int = bytesRead / bytesPerPacket
             if (numSamplesProcessed + numSamplesToProcess >= maxNumSamples) {
               numSamplesToProcess = maxNumSamples - numSamplesProcessed
@@ -728,14 +769,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
         fos.close()
         saveAsWav()
-
-        Log.i(tag, "*****HEYA***")
-        throw Exception("HEYA!")
       }
       catch (e:Exception) {
-        
-        Log.i(tag, "A")
-
         e.printStackTrace()
         recStopCode = RecStopCode.Error
       }
@@ -764,17 +799,15 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
           audioRecord = null
         }
 
-        //Send stop event to js
-        // val obj = Arguments.createMap()
-        // obj.putString(EventDetailKey.RecStopCode.str, recStopCode.str)        
-        // sendEvent(reactContext, Event.RecStop.str, obj)
+        //If we arrived here due to an error or timeout, send stop code to app.
+        //Not necessary, if stop requested via stopAndroidWavRecorder().
+        if (recStopCode !== RecStopCode.Requested) {
+          sendRecStopEvent()
+        }
       }
     }.start()
   
-    val result = Arguments.createMap()
-    result.putMap("grantedOptions:", grantedOptions)
-    result.putString(audioFilePathKey, "file:///$audioFileURL")
-    return promise.resolve(result)
+    return promise.resolve(grantedOptions)
   }
 
   @ReactMethod
@@ -783,28 +816,28 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
     if (audioRecord == null) {
       Log.d(tag, "   audioRecord == null")
-      return promise.reject("pauseWavRecorder: ", "audioRecord was null on pause.")
+      return promise.reject("RnAudio.pauseAndroidWavRecorder(): ", "audioRecord was null on pause.")
     }
 
     if (audioRecoderIsRecording() == false) {
       Log.d(tag, "   audioRecoderIsRecording() == false")
-      return promise.resolve("pauseWavRecorder: audioRecord was not recording.")
+      return promise.resolve("RnAudio.pauseAndroidWavRecorder(): audioRecord was not recording.")
     }
 
     if (pausedRecordTime != 0L) {
       Log.d(tag, "   pausedRecordTime != 0L")
-      return promise.resolve("pauseWavRecorder: audioRecord was already paused")
+      return promise.resolve("RnAudio.pauseAndroidWavRecorder(): audioRecord was already paused")
     }
 
     try {
       Log.d(tag, "   removing record callbacks")
       pausedRecordTime = SystemClock.elapsedRealtime()
       recorderRunnable?.let { recordHandler!!.removeCallbacks(it) }
-      return promise.resolve("pauseWavRecorder: Paused wav recording")
+      return promise.resolve("RnAudio.pauseAndroidWavRecorder(): Paused wav recording")
     } 
     catch (e: Exception) {
       Log.e(tag, "pauseWavRecorder exception: " + e.message)
-      return promise.reject("pauseWavRecorder", e.message)
+      return promise.reject("RnAudio.pauseAndroidWavRecorder() - Error: ", e.message)
     }      
   }
 
@@ -814,17 +847,17 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
     if (audioRecord == null) {
         Log.d(tag, "   audioRecord == null")
-        return promise.resolve("resumeWavRecorder: audioRecord was null on resume.")
+        return promise.resolve("RnAudio.resumeAndroidWavRecorder(): audioRecord was null on resume.")
     }
 
     if (audioRecoderIsRecording() == false) {
         Log.d(tag, "   audioRecoderIsRecording() == false")
-        return promise.resolve("resumeWavRecorder: audioRecord is not recording.")
+        return promise.resolve("RnAudio.resumeAndroidWavRecorder(): audioRecord is not recording.")
     }
 
     if (audioRecorderIsPaused() == false) {
         Log.d(tag, "   audioRecorderIsPaused() == false")
-        return promise.resolve("resumeWavRecorder: audioRecord was not paused")
+        return promise.resolve("RnAudio.resumeAndroidWavRecorder(): audioRecord was not paused")
     }
 
     try {
@@ -832,11 +865,11 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
       pausedRecordTime = 0L
       Log.d(tag, "   re-posting recordHandler")
       recorderRunnable?.let { recordHandler!!.postDelayed(it, subscriptionDurationMs.toLong()) }
-      return promise.resolve("resumeWavRecorder: Wav recording resumed.")
+      return promise.resolve("RnAudio.resumeAndroidWavRecorder(): Wav recording resumed.")
     } 
     catch (e: Exception) {
       Log.e(tag, "resumeWavRecorder Error: " + e.message)
-      return promise.reject("resumeWavRecorder Error: ", e.message)
+      return promise.reject("RnAudio.resumeAndroidWavRecorder() - Error: ", e.message)
     } 
   }
 
@@ -846,31 +879,27 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     Log.d(tag, "RnAudio.stopAndroidWavRecorder()")
 
     if (recordHandler != null) {
-        Log.d(tag, "   removing record callbacks")
-        recorderRunnable?.let { recordHandler!!.removeCallbacks(it) }
+      Log.d(tag, "   removing record callbacks")
+      recorderRunnable?.let { recordHandler!!.removeCallbacks(it) }
     }
 
     if (audioRecord == null) {
-        return promise.resolve("wavRecorder already stopped (audioRecord is null).")
+      return promise.resolve("RnAudio.stopAndroidWavRecorder() - wavRecorder already stopped (audioRecord is null).")
     }
 
-    //Actually stopping the recorder, and informing the UI, 
-    //happens in thread launched from startWavRecorder()
+    //This function clears a flag; actually stopping the recorder
+    //and informing the UI happens in thread launched from startAndroidWavRecorder()
     recStopCode = RecStopCode.Requested
     isRecordingWav = false
 
-    //Wait for the recorder to be stopped
+    //Wait for recorder thread to stop
     while (audioRecord != null) {
-      Log.i(tag, "Waiting for audioRecord to be destroyed...")
+      Log.i(tag, "RnAudio: stopAndroidWavRecorder(): Waiting for audioRecord to be destroyed...")
       Thread.sleep(10)
     }
 
-    val obj = Arguments.createMap()
-    obj.putString(EventDetailKey.RecStopCode.str, recStopCode.str)
-    obj.putString(audioFilePathKey, "file:///$audioFileURL")
-    return promise.resolve(obj)
+    return promise.resolve(createRecStopResult())
   }
-
 
 
   private fun saveAsWav() {
@@ -912,8 +941,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
       Log.d(tag, "RnAudio.addWavHeader()")
 
-      val byteRate:Int = sampleRate * numChannels * byteDepth
-      val blockAlign:Int = numChannels * byteDepth
+      val byteRate:Int = sampleRate * numChannels * lpcmByteDepth
+      val blockAlign:Int = numChannels * lpcmByteDepth
 
       val numHeaderBytes:Int = 44
       val header:ByteArray = ByteArray(numHeaderBytes)
@@ -953,7 +982,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
       header[31] = ((byteRate shr 24) and 0xff).toByte()
       header[32] = blockAlign.toByte()                     // bytes in one sample, for all channels
       header[33] = 0.toByte()
-      header[34] = (byteDepth * 8).toByte()                  // bits in (one channel of a) sample
+      header[34] = (lpcmByteDepth * 8).toByte()                  // bits in (one channel of a) sample
       header[35] = 0.toByte()
       header[36] = toByte('d')                                   // beginning of the data chunk
       header[37] = toByte('a')
@@ -1005,7 +1034,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   }
 
   private fun getPCMEncoding():Int {
-    if (byteDepth == 2) {
+    if (lpcmByteDepth == 2) {
       return AudioFormat.ENCODING_PCM_16BIT
     }
     else {
@@ -1014,7 +1043,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   }
 
 
-  private fun calcWavMeteringVolume():Double { //channels interleaved
+  private fun calcWavMeterLevelDb():Double { //channels interleaved
 
     val MAX_METER_LEVEL:Double = 0.0
     val MIN_METER_LEVEL:Double = -100.0
@@ -1024,8 +1053,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
     var sumVolume:Double = 0.0
     val numBytes:Int = wavFrameDataContentSize!!
-    var numSamples:Int = numBytes / (byteDepth * numChannels)
-    if (byteDepth == 2) {
+    var numSamples:Int = numBytes / (lpcmByteDepth * numChannels)
+    if (lpcmByteDepth == 2) {
       val bufferInt16:ShortArray = ShortArray(numSamples * numChannels)
       val byteBuffer:ByteBuffer = ByteBuffer.wrap(wavFrameData!!, 0, numBytes)
       byteBuffer.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(bufferInt16)
@@ -1033,7 +1062,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
         sumVolume += Math.abs((bufferInt16[i * numChannels]).toDouble())
       }
     }
-    else { //byteDepth of 1
+    else { //lpcmByteDepth of 1
       for (i in 0..(numSamples-1)) {
         var s = (wavFrameData!![i * numChannels].toInt() and 0xFF) - 127        
         sumVolume +=  Math.abs(s.toDouble())
@@ -1041,10 +1070,10 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     }
 
     var avgVolume:Double = sumVolume / numSamples
-    if (byteDepth == 1) {
+    if (lpcmByteDepth == 1) {
       avgVolume /= Byte.MAX_VALUE.toDouble()
     } 
-    else { //byteDepth == 2
+    else { //lpcmByteDepth == 2
       avgVolume /= Short.MAX_VALUE.toDouble()
     }
 
