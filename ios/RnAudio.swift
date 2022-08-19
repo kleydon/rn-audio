@@ -111,7 +111,10 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     if (path != nil && 
         (path!.hasPrefix("http://") || 
          path!.hasPrefix("https://") || 
-               path!.hasPrefix("file://"))) {
+         path!.hasPrefix("file://") ||
+         path!.hasPrefix("/") ||
+         path!.hasPrefix("./") ||
+         path!.hasPrefix("../"))) {
       return URL(string: path!)!
     }
       else if (path != nil && path != "" && path != DEFAULT_FILENAME_PLACEHOLDER) {

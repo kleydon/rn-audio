@@ -38,7 +38,8 @@ import kotlin.math.log10
 // NOTE! In class declaration line below:
 // * 'private val' makes reactContext accessible to member methods
 // * ', PermissionListener' ensures that onRequestPermissionsResult() can be over-ridden and called in the class
-class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), PermissionListener {
+class RnAudioModule(private val reactContext: ReactApplicationContext) : 
+    ReactContextBaseJavaModule(reactContext), PermissionListener {
 
   companion object {
     private val tag = "RnAudio"  // Keep up-to-date, if module name changes!
@@ -131,30 +132,36 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   private var mTimer: Timer? = null
 
 
-  //Perhaps this function is unnecessary, if permissions taken care of 
-  //at the (react-native) app level?
+  //This is just a fallback; ReactNative's PermissionsAndroid should be invoked from main application code
+  //Challenges:
+  //https://stackoverflow.com/questions/60299621/how-to-use-onrequestpermissionsresult-to-handle-permissions-in-react-native-andr
+  //https://stackoverflow.com/questions/32714787/android-m-permissions-onrequestpermissionsresult-not-being-called
+  //https://stackoverflow.com/questions/44960363/how-do-you-implement-permissionawareactivity-for-react-native
   private fun ensurePermissionsSecured():Boolean {
     Log.i(tag, "RnAudio.ensurePermissionsSecured()")
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
           (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
-          ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
+           ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
           
         ActivityCompat.requestPermissions((currentActivity)!!, arrayOf(
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE), 0)
-        //Perhaps something smarter to do than returning false here...
+        
+        //Returning false is not ideal, but its simple; probably the least-worst solution.
+        //If there are alternatives, they are MESSY.
         return false
       }
-    } catch (ne: NullPointerException) {
-      Log.w(tag, ne.toString())
+    } 
+    catch (e: Exception) {
+      Log.w(tag, e.toString())
       return false
     }
     return true
   }
 
-
-  override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray): Boolean {
+  //This isn't getting called. Even if it could be, its MESSY. See links above.
+   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray): Boolean {
     Log.i(tag, "RnAudio.onRequestPermissionsResult()")
     
     // TODO: Should this incorporate WRITE_EXTERNAL_STORAGE permission, too?
@@ -584,10 +591,13 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   private fun constructAudioFileURL(path: String?, isWav:Boolean):String {
     print("RnAudio.constructAudioFileURL()")
     if (path != null &&
-        (path!!.startsWith("http://") || 
-         path!!.startsWith("https://") || 
-         path!!.startsWith("file://"))) {
-      return path!!
+        (path.startsWith("http://") || 
+         path.startsWith("https://") || 
+         path.startsWith("file://") ||
+         path.startsWith("/") ||
+         path.startsWith("./") ||
+         path.startsWith("../"))) {
+      return path
     }
     else if (path != null && path != "" && path != DEFAULT_FILENAME_PLACEHOLDER) {
       return "${reactContext.cacheDir}/$path"

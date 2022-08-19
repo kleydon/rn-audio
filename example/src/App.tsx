@@ -130,7 +130,7 @@ const screenWidth = Dimensions.get('screen').width
 const dirs = RNFetchBlob.fs.dirs
 
 const audio = new Audio();
-audio.setSubscriptionDuration(0.1) // optional. Default is 0.5
+audio.setSubscriptionDuration(0.15) // optional; default is (0.5)
 
 const recordingOptions:RecordingOptions = {
   //audioFilePath: 'https://download.samplelib.com/wav/sample-3s.wav'
@@ -427,7 +427,7 @@ export default class App extends Component<any, State> {
   }
 
   private onStopRecord = async ():Promise<undefined> => {
-    ilog('app.onStartRecord()')
+    ilog('app.onStopRecord()')
     const [err, res] = await to<object|string>(audio.stopRecorder())
     if (err) {
       const errMsg = 'app.onStopRecord() - Error: ' + err
