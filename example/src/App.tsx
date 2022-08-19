@@ -9,7 +9,6 @@ import {
   PlayUpdateMetadata,
   RecUpdateMetadata,
   RecStopMetadata,
-  AppleAVLinearPCMBitDepthId,
   AndroidOutputFormatId,
   NumberOfChannelsId,
   ByteDepthId,
@@ -133,25 +132,25 @@ const dirs = RNFetchBlob.fs.dirs
 const audio = new Audio();
 audio.setSubscriptionDuration(0.1) // optional. Default is 0.5
 
-const recordingOptions: RecordingOptions = {
+const recordingOptions:RecordingOptions = {
+  //audioFilePath: 'https://download.samplelib.com/wav/sample-3s.wav'
 
   //Shared
   audioFilePath: Platform.select({
-  ios: 'recording.m4a',
-  //ios: 'recording.wav',
-  //ios: `${dirs.CacheDir}/recording.wav`,
-  android: `${dirs.CacheDir}/recording.mp4`,
-  //android: `${dirs.CacheDir}/recording.wav`,
+  //ios: 'recording.m4a',
+  ios: 'recording.wav',
+  //android: `${dirs.CacheDir}/recording.mp4`,
+  android: `${dirs.CacheDir}/recording.wav`,
   }),
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,
   sampleRate: 44100,
   numChannels: NumberOfChannelsId.ONE,
-  lpcmByteDepth: ByteDepthId.TWO,
+  lpcmByteDepth: ByteDepthId.ONE,
 
   //Apple-specific
-  appleAudioFormatId: AppleAudioFormatId.aac,
-  //appleAudioFormatId: AppleAudioFormatId.lpcm,
+  //appleAudioFormatId: AppleAudioFormatId.aac,
+  appleAudioFormatId: AppleAudioFormatId.lpcm,
   appleAVAudioSessionModeId: AppleAVAudioSessionModeId.measurement,
   //Apple encoded/compressed-specific
   appleAVEncoderAudioQualityId: AppleAVEncoderAudioQualityId.high,
@@ -161,10 +160,10 @@ const recordingOptions: RecordingOptions = {
   appleAVLinearPCMIsNonInterleaved: false,
 
   //Android-specific
-  androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
-  //androidOutputFormatId: AndroidOutputFormatId.WAV,
-  androidAudioEncoderId: AndroidAudioEncoderId.AAC,
-  //androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
+  //androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
+  androidOutputFormatId: AndroidOutputFormatId.WAV,
+  //androidAudioEncoderId: AndroidAudioEncoderId.AAC,
+  androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
   androidAudioSourceId: AndroidAudioSourceId.MIC,
   //Android encoded/compressed-specific
   androidAudioEncodingBitRate: 128000,

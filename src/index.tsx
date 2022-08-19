@@ -271,10 +271,10 @@ export class Audio {
         res = false
         elog(fileIsWavPrefixStr + 'androidAudioEncoderId is:' + o.androidAudioEncoderId)
       }
-      if (o.wavByteDepth && 
-          (o.wavByteDepth === 1 || o.wavByteDepth === 2) === false) {
+      if (o.lpcmByteDepth && 
+          (o.lpcmByteDepth === 1 || o.lpcmByteDepth === 2) === false) {
         res = false
-        elog(fileIsWavPrefixStr + 'wavByteDepth is:' + o.wavByteDepth)
+        elog(fileIsWavPrefixStr + 'wavByteDepth is:' + o.lpcmByteDepth)
       }
       if (o.appleAudioFormatId !== AppleAudioFormatId.lpcm) {
         res = false

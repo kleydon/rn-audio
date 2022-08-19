@@ -42,6 +42,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
   companion object {
     private val tag = "RnAudio"  // Keep up-to-date, if module name changes!
+    private val DEFAULT_FILENAME_PLACEHOLDER = "DEFAULT"
     private val DEFAULT_FILE_NAME = "recording.mp4"
     private val DEFAULT_WAV_FILE_NAME = "recording.wav"
   }
@@ -54,6 +55,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   private val DEFAULT_MAX_RECORDING_DURATION_SEC = 10.0
   private val DEFAULT_SUBSCRIPTION_DURATION_MS = 500
   
+  private val MAX_METER_LEVEL_DB:Double = 0.0
+  private val MIN_METER_LEVEL_DB:Double = -160.0
 
   private val PERMISSION_NOT_GRANTED_STR = "One or more required permissions (RECORD_AUDIO, WRITE_EXTERNAL_STORAGE) not granted."
   private val TRY_AGAIN_AFTER_ADDING_PERMISSIONS_STR = "Try again after adding permission(s)."
@@ -94,8 +97,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   private val androidOutputFormatIdKey = "androidOutputFormatId"
   private val androidAudioEncoderIdKey = "androidAudioEncoderId"
   private val androidAudioEncodingBitRateKey = "androidAudioEncodingBitRate"
-
-  private var audioFileURL = "${reactContext.cacheDir}/$DEFAULT_FILE_NAME"
+ 
+  private var audioFileURL:String = ""
   private var recMeteringEnabled = false
 
   //Recording-related
@@ -165,17 +168,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   }
 
 
-  fun setAudioFileURL(path: String?) {
-    Log.d(tag, "RnAudio.setFileUrl()")
-    if (path == null || path == "DEFAULT" || path == "") {
-      audioFileURL = "${reactContext.cacheDir}/$DEFAULT_FILE_NAME"
-    } 
-    else {
-      audioFileURL = path
-    }
-  }
-
-
   @ReactMethod
   private fun sendEvent(reactContext: ReactContext,
                         eventName: String,
@@ -196,11 +188,11 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     sendEvent(reactContext, Event.RecStop.str, createRecStopResult())
   }
 
-  private fun sendRecUpdateEvent(elapsedMs:Double, isRecording:Boolean, meterLevelDb:Double?) {
+  private fun sendRecUpdateEvent(elapsedMs:Double, isRecording:Boolean, meterLevelDb:Double) {
     val obj = Arguments.createMap()
     obj.putDouble(EventDetailKey.RecElapsedMs.str, elapsedMs)
     obj.putBoolean(EventDetailKey.IsRecording.str, isRecording)
-    if (recMeteringEnabled && meterLevelDb != null) {
+    if (recMeteringEnabled) {
       obj.putDouble(EventDetailKey.RecMeterLevel.str, meterLevelDb)
     }
     sendEvent(reactContext, Event.RecUpdate.str, obj)
@@ -237,7 +229,10 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     //Set/coerce recording options
     val ro = recordingOptions
     //Cross-platform
-    setAudioFileURL(if (ro.hasKey(audioFilePathKey)) ro.getString(audioFilePathKey) else DEFAULT_FILE_NAME)
+    this.audioFileURL = constructAudioFileURL(
+        if (ro.hasKey(audioFilePathKey)) ro.getString(audioFilePathKey)!! else DEFAULT_FILENAME_PLACEHOLDER,
+        false //Isn't WAV file
+    )
     recMeteringEnabled = if (ro.hasKey(recMeteringEnabledKey)) ro.getBoolean(recMeteringEnabledKey) else true
     var maxRecDurationSec = if (ro.hasKey(maxRecDurationSecKey)) ro.getDouble(maxRecDurationSecKey) else DEFAULT_MAX_RECORDING_DURATION_SEC
     if (maxRecDurationSec > ABSOLUTE_MAX_DURATION_SEC) {
@@ -304,20 +299,21 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
           }
 
           //Calculate meterLevelDb
-          var meterLevelDb:Double? = null
+          var meterLevelDb:Double = MIN_METER_LEVEL_DB
           if (recMeteringEnabled) {
             var maxAmplitude = 0.0
             if (mediaRecorder != null) {
               maxAmplitude = mediaRecorder!!.maxAmplitude.toDouble()
             }
-            meterLevelDb = -160.0
-            val maxAudioSize:Double = 32767.0
+            //Assuming maxAudioSize is a 16 bit value:
+            //https://stackoverflow.com/questions/10655703/what-does-androids-getmaxamplitude-function-for-the-mediarecorder-actually-gi
+            val maxAudioSize:Double = Short.MAX_VALUE.toDouble() //Assuming 
             if (maxAmplitude > 0) {
                 meterLevelDb = 20 * log10(maxAmplitude / maxAudioSize)
             }
           }
           val isRecording = true
-          sendRecUpdateEvent(time.toDouble(), isRecording, meterLevelDb!!)
+          sendRecUpdateEvent(time.toDouble(), isRecording, meterLevelDb)
 
           recordHandler!!.postDelayed(this, subscriptionDurationMs.toLong())
         }
@@ -420,10 +416,12 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     if (mediaPlayer == null) {
       return promise.reject("setVolume", "mediaPlayer is null.")
     }
-
+    setVolumeInner(volume)
+    return promise.resolve("set volume")
+  }
+  fun setVolumeInner(volume: Double) {
     val mVolume = volume.toFloat()
     mediaPlayer!!.setVolume(mVolume, mVolume)
-    return promise.resolve("set volume")
   }
 
   @ReactMethod
@@ -444,10 +442,11 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
       mediaPlayer = MediaPlayer()
     }
 
-    setVolume(playbackVolume, promise)
+    setVolumeInner(playbackVolume)
 
-    var resolvedUri = if (uri == "DEFAULT") "${reactContext.cacheDir}/$DEFAULT_FILE_NAME" else uri
-
+    // NOTE: If uri is "DEFAULT", defaults to non-wav, here; this could go wrong...
+    var resolvedUri = constructAudioFileURL(uri, false)
+    
     try {
       if (httpHeaders != null) {
         val headers: MutableMap<String, String?> = HashMap<String, String?>()
@@ -582,6 +581,27 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     return promise.resolve("RnAudio.setSubscriptionDuration() - Set subscription duration: $subscriptionDurationMs")
   }
 
+  private fun constructAudioFileURL(path: String?, isWav:Boolean):String {
+    print("RnAudio.constructAudioFileURL()")
+    if (path != null &&
+        (path!!.startsWith("http://") || 
+         path!!.startsWith("https://") || 
+         path!!.startsWith("file://"))) {
+      return path!!
+    }
+    else if (path != null && path != "" && path != DEFAULT_FILENAME_PLACEHOLDER) {
+      return "${reactContext.cacheDir}/$path"
+    }
+    // Could do more to provide the right filename based on knowing
+    // the encoding...
+    else if (isWav) {
+      return "${reactContext.cacheDir}/$DEFAULT_WAV_FILE_NAME"
+    }
+    else {
+      return "${reactContext.cacheDir}/$DEFAULT_FILE_NAME"
+    }
+  }
+
 
   fun initAndroidWavRecorderOptions(requestedOptions: ReadableMap, 
                                     grantedOptions: WritableMap):Boolean {
@@ -594,7 +614,10 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
     //Set/coerce recording options
     val ro = requestedOptions
-    setAudioFileURL(if (ro.hasKey(audioFilePathKey)) ro.getString(audioFilePathKey) else DEFAULT_WAV_FILE_NAME)
+    this.audioFileURL = constructAudioFileURL(
+      (if (ro.hasKey(audioFilePathKey)) ro.getString(audioFilePathKey)!! else DEFAULT_FILENAME_PLACEHOLDER),
+      true // is a wav file
+    )
     this.recMeteringEnabled = if (ro.hasKey(recMeteringEnabledKey)) ro.getBoolean(recMeteringEnabledKey) else true
     this.sampleRate = if (ro.hasKey(sampleRateKey)) ro.getInt(sampleRateKey) else 44100
     this.numChannels = if (ro.hasKey(numChannelsKey)) ro.getInt(numChannelsKey) else 1
@@ -717,7 +740,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
     recorderRunnable = object : Runnable {
       override fun run() {
         val time = SystemClock.elapsedRealtime() - systemTime - totalPausedRecordTime
-        var meterLevelDb = if (recMeteringEnabled)  calcWavMeterLevelDb() else null
+        val meterLevelDb = if (recMeteringEnabled) calcWavMeterLevelDb() else MIN_METER_LEVEL_DB
+        Log.d(tag, "recMeteringEnabled: " + recMeteringEnabled + " meterLevelDb:" + meterLevelDb)
         val isRecording = true
         sendRecUpdateEvent(time.toDouble(), isRecording, meterLevelDb)
         recordHandler!!.postDelayed(this, subscriptionDurationMs.toLong())
@@ -905,7 +929,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   private fun saveAsWav() {
     Log.i(tag, "RnAudio.saveAsWav()")
 
-    if (tempRawPCMDataFilePath == null || audioFileURL == "") {
+    if (tempRawPCMDataFilePath == null  || audioFileURL == "" || audioFileURL == "DEFAULT") {
       throw Exception("saveAsWav() - Null or empty file path.")
     }
 
@@ -1005,7 +1029,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
   }
 
   private fun audioRecoderIsRecording():Boolean { //But may be paused
-    Log.i(tag, "RnAudio.audioRecoderIsRecording()")
+    //Log.i(tag, "RnAudio.audioRecoderIsRecording()")
     if (audioRecord == null) {
       Log.i(tag, "   audioRecord == null returning false")
       return false
@@ -1045,9 +1069,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
 
   private fun calcWavMeterLevelDb():Double { //channels interleaved
 
-    val MAX_METER_LEVEL:Double = 0.0
-    val MIN_METER_LEVEL:Double = -100.0
-
     // * Output in dBFS: dB relative to full scale
     // * Only includes contributions of channel-1 samples
 
@@ -1082,11 +1103,11 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) : ReactCo
       dbFS = 20 * Math.log10(avgVolume)
     }
 
-    if (dbFS < MIN_METER_LEVEL) {
-      dbFS = MIN_METER_LEVEL
+    if (dbFS < MIN_METER_LEVEL_DB) {
+      dbFS = MIN_METER_LEVEL_DB
     }
-    if (dbFS > MAX_METER_LEVEL) {
-      dbFS = MAX_METER_LEVEL
+    if (dbFS > MAX_METER_LEVEL_DB) {
+      dbFS = MAX_METER_LEVEL_DB
     }
 
     return dbFS

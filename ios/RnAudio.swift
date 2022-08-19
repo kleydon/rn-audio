@@ -28,6 +28,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   let DEFAULT_FILENAME_PLACEHOLDER = "DEFAULT"
   let DEFAULT_FILENAME = "sound.m4a"
 
+  let ABSOLUTE_MAX_DURATION_SEC = 2 * 60.0 * 60.0
   let DEFAULT_MAX_REC_DURATION_SEC = 10.0
   let DEFAULT_SUBSCRIPTION_DURATION_SEC = 0.5
 
@@ -55,7 +56,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   let grantedOptionsKey = "grantedOptions"
 
   //File path/URL
-  //NOTE: Don't set directly; use setAudioFileURL()
+  //NOTE: Set this with constructAudioFileURL()
   var audioFileURL: URL? = nil
 
   //Durations
@@ -105,18 +106,22 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   }
 
 
-  func setAudioFileURL(path: String?) {
-    print("RnAudio.setAudioFileURL()")
-    if (path == nil || path == "DEFAULT") {
+  func constructAudioFileURL(path: String?) -> URL {
+    print("RnAudio.constructAudioFileURL()")
+    if (path != nil && 
+        (path!.hasPrefix("http://") || 
+         path!.hasPrefix("https://") || 
+               path!.hasPrefix("file://"))) {
+      return URL(string: path!)!
+    }
+      else if (path != nil && path != "" && path != DEFAULT_FILENAME_PLACEHOLDER) {
       let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-      self.audioFileURL = cachesDirectory.appendingPathComponent(DEFAULT_FILENAME)
-    } 
-    else if (path!.hasPrefix("http://") || path!.hasPrefix("https://") || path!.hasPrefix("file://")) {
-      self.audioFileURL = URL(string: path!)
-    } 
-    else {
+      return cachesDirectory.appendingPathComponent(path!)
+    }
+    else { // Could do more to provide the right filename based on knowing
+           // the encoding...
       let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-      self.audioFileURL = cachesDirectory.appendingPathComponent(path!)
+      return cachesDirectory.appendingPathComponent(DEFAULT_FILENAME)
     }
   }
 
@@ -229,9 +234,12 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("        lpcmIsNonInterleaved: ", ro[appleAVLinearPCMIsNonInterleavedKey] as Any)
 
     //Shared
-    let audioFilePath = (ro[audioFilePathKey] as? String) ?? DEFAULT_FILENAME_PLACEHOLDER
-    let recMeteringEnabled = (ro[recMeteringEnabledKey] as? Bool) ?? true
-    let maxRecDurationSec = (ro[maxRecDurationSecKey] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
+    self.audioFileURL = constructAudioFileURL(path: ro[audioFilePathKey] as? String)
+    self.recMeteringEnabled = (ro[recMeteringEnabledKey] as? Bool) ?? true
+    self.maxRecDurationSec = (ro[maxRecDurationSecKey] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
+    if (self.maxRecDurationSec > ABSOLUTE_MAX_DURATION_SEC) {
+      self.maxRecDurationSec = ABSOLUTE_MAX_DURATION_SEC
+    }
     let sampleRate = ro[sampleRateKey] as? Int ?? 44100
     let numChannels = ro[numChannelsKey] as? Int ?? 1
     //Apple-specific
@@ -247,7 +255,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     print("  COERCED recordingOptions:")
     print("    shared:")
-    print("      audioFilePath: ", audioFilePath)
+    print("      audioFileUrl: ", audioFileURL!)
     print("      recMeteringEnabled: ", recMeteringEnabled)
     print("      maxRecDurationSec: ", maxRecDurationSec)
     print("      sampleRate: ", sampleRate)
@@ -263,10 +271,6 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("      lpcmIsFloatKey: ", lpcmIsFloatKey)
     print("      lpcmIsNonInterleaved: ", lpcmIsNonInterleaved)
 
-    setAudioFileURL(path: audioFilePath)
-    self.recMeteringEnabled = recMeteringEnabled
-    self.maxRecDurationSec = maxRecDurationSec
-    
     func sendStopCodeErrorEvent() {
       print("RnAudio.startRecorder.sendStopCodeErrorEvent()")
       let status = [
@@ -535,7 +539,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     catch {
       return reject("RnAudio", "Failed to play", nil)
     }
-    setAudioFileURL(path: path)
+    self.audioFileURL = constructAudioFileURL(path: path)
     audioPlayerAsset = AVURLAsset(url: self.audioFileURL!, 
                               options: ["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
     audioPlayerItem = AVPlayerItem(asset: audioPlayerAsset!)
