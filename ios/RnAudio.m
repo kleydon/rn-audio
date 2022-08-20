@@ -3,7 +3,10 @@
 
 @interface RCT_EXTERN_MODULE(RnAudio, RCTEventEmitter)
 
-RCT_EXTERN_METHOD(setSubscriptionDuration:(double)durationSec);
+//Recorder
+
+RCT_EXTERN_METHOD(getRecorderState:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject);
 
 RCT_EXTERN_METHOD(startRecorder:(NSDictionary *)recordingOptions
                   resolve:(RCTPromiseResolveBlock)resolve
@@ -18,9 +21,10 @@ RCT_EXTERN_METHOD(pauseRecorder:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(resumeRecorder:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject);
 
-RCT_EXTERN_METHOD(setVolume:(float)volume
-                  resolver:(RCTPromiseResolveBlock) resolve
-                  rejecter:(RCTPromiseRejectBlock) reject);
+//Player
+
+RCT_EXTERN_METHOD(getPlayerState:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject);
 
 RCT_EXTERN_METHOD(startPlayer:(NSString*)path
                   httpHeaders:(NSDictionary*)httpHeaders
@@ -31,14 +35,21 @@ RCT_EXTERN_METHOD(startPlayer:(NSString*)path
 RCT_EXTERN_METHOD(resumePlayer:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject);
 
-RCT_EXTERN_METHOD(seekToPlayer:(nonnull double*) time
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject);
-
 RCT_EXTERN_METHOD(pausePlayer:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject);
 
 RCT_EXTERN_METHOD(stopPlayer:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject);
+
+RCT_EXTERN_METHOD(seekToPlayer:(nonnull double*) time
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject);
+
+RCT_EXTERN_METHOD(setPlayerVolume:(double)volume
+                  resolver:(RCTPromiseResolveBlock) resolve
+                  rejecter:(RCTPromiseRejectBlock) reject);
+
+RCT_EXTERN_METHOD(setSubscriptionDuration:(double)durationSec);
+
 
 @end

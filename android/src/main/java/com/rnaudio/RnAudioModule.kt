@@ -52,7 +52,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     return tag
   }
 
-  private val ABSOLUTE_MAX_DURATION_SEC = 2 * 60.0 * 60.0
   private val DEFAULT_MAX_RECORDING_DURATION_SEC = 10.0
   private val DEFAULT_SUBSCRIPTION_DURATION_MS = 500
   
@@ -140,7 +139,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   private fun ensurePermissionsSecured():Boolean {
     Log.i(tag, "RnAudio.ensurePermissionsSecured()")
     try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&  // Marshmellow - API 23
           (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
            ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
           
@@ -242,9 +241,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     )
     recMeteringEnabled = if (ro.hasKey(recMeteringEnabledKey)) ro.getBoolean(recMeteringEnabledKey) else true
     var maxRecDurationSec = if (ro.hasKey(maxRecDurationSecKey)) ro.getDouble(maxRecDurationSecKey) else DEFAULT_MAX_RECORDING_DURATION_SEC
-    if (maxRecDurationSec > ABSOLUTE_MAX_DURATION_SEC) {
-      maxRecDurationSec = ABSOLUTE_MAX_DURATION_SEC
-    }
     this.sampleRate = if (ro.hasKey(sampleRateKey)) ro.getInt(sampleRateKey) else 44100
     this.numChannels = if (ro.hasKey(numChannelsKey)) ro.getInt(numChannelsKey) else 1
     //Android-specific
@@ -413,22 +409,22 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     return promise.resolve(createRecStopResult())
   }
 
-  //setVolume()
+  //setPlayerVolume()
   //  * MediaPlayer must exist before calling this! Consider using startPlayer's playbackVolume 
   //    parameter instead of calling this.
   //  * relative to 100% of Media Volume
   @ReactMethod
-  fun setVolume(volume: Double, promise: Promise) {
-    Log.d(tag, "RnAudio.setVolume()")
+  fun setPlayerVolume(volume: Double, promise: Promise) {
+    Log.d(tag, "RnAudio.setPlayerVolume()")
     if (mediaPlayer == null) {
-      return promise.reject("setVolume", "mediaPlayer is null.")
+      return promise.reject("setPlayerVolume()", "mediaPlayer is null.")
     }
-    setVolumeInner(volume)
-    return promise.resolve("set volume")
+    setPlayerVolumeInner(volume)
+    return promise.resolve("volume set.")
   }
-  fun setVolumeInner(volume: Double) {
+  fun setPlayerVolumeInner(volume: Double) {
     val mVolume = volume.toFloat()
-    mediaPlayer!!.setVolume(mVolume, mVolume)
+    mediaPlayer?.setVolume(mVolume, mVolume)
   }
 
   @ReactMethod
@@ -449,7 +445,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       mediaPlayer = MediaPlayer()
     }
 
-    setVolumeInner(playbackVolume)
+    setPlayerVolumeInner(playbackVolume)
 
     // NOTE: If uri is "DEFAULT", defaults to non-wav, here; this could go wrong...
     var resolvedUri = constructAudioFileURL(uri, false)
@@ -633,12 +629,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     this.numChannels = if (ro.hasKey(numChannelsKey)) ro.getInt(numChannelsKey) else 1
     var maxRecDurationSec = if (ro.hasKey(maxRecDurationSecKey)) ro.getDouble(maxRecDurationSecKey) else DEFAULT_MAX_RECORDING_DURATION_SEC
     maxNumSamples = sampleRate * maxRecDurationSec.toInt()
-    if (maxNumSamples > (sampleRate * ABSOLUTE_MAX_DURATION_SEC)) { //Coerce if necessary
-      maxNumSamples = (sampleRate * ABSOLUTE_MAX_DURATION_SEC).toInt()
-    }
-    if (maxRecDurationSec > (maxNumSamples / sampleRate)) { //Coerce if necessary
-      maxRecDurationSec = maxNumSamples.toDouble() / sampleRate.toDouble()
-    }
     //Android specific
     val audioSourceId = if (ro.hasKey(androidAudioSourceIdKey)) ro.getInt(androidAudioSourceIdKey) else MediaRecorder.AudioSource.MIC
     val outputFormatId = if (ro.hasKey(androidOutputFormatIdKey)) ro.getInt(androidOutputFormatIdKey) else 999 //Co-opting 999 for WAV

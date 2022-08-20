@@ -6,9 +6,10 @@ import {
   AppleAVAudioSessionModeId,
   AndroidAudioSourceId,
   AndroidAudioEncoderId,
-  PlayUpdateMetadata,
   RecUpdateMetadata,
   RecStopMetadata,
+  PlayUpdateMetadata,
+  PlayStopMetadata,
   AndroidOutputFormatId,
   NumberOfChannelsId,
   ByteDepthId,
@@ -452,9 +453,20 @@ export default class App extends Component<any, State> {
         playbackDurationStr: audio.mmssss(Math.floor(e.playDurationMs)),
       })
     }
+    const playStopCallback = async (e: PlayStopMetadata):Promise<undefined> => {
+      ilog('app.playStopCallback() - metadata:', e)
+      const [err,] = await to<string|undefined>(this.onStopPlay())
+      if (err) {
+        const errStr = 'In playStopCallback - error calling onStopPlay(): ' + e
+        elog(errStr)
+        return
+      }
+      return
+    }
     const [err, res] = await to<object|string>(audio.startPlayer({
       uri: recordingOptions.audioFilePath,
       playUpdateCallback,
+      playStopCallback,
       playVolume: 1.0,
     }))
     if (err) {

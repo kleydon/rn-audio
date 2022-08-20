@@ -4,8 +4,8 @@
 //#import <React/RCTViewManager.h>
 #import <React/RCTEventEmitter.h>
 
-@interface RnAudio : RCTEventEmitter <RCTBridgeModule, AVAudioPlayerDelegate>
-- (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player
-        successfully:(BOOL)flag;
-- (void)updateRecorderProgress:(NSTimer*) timer;
+// Is this file necessary? *Could* it be necessary?
+
+@interface RnAudio : RCTEventEmitter <RCTBridgeModule>
+
 @end

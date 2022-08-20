@@ -5,30 +5,48 @@ import AVFoundation
 @objc(RnAudio)
 class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
+  let TAG = "RnAudio"
+
   //Events passed from native -> js
   let EVENT_ID_REC_UPDATE = "RecUpdate"
   let EVENT_ID_PLAY_UPDATE = "PlayUpdate"
-  let EVENT_ID_REC_STOP = "RecStop"  // When recording stops, due to error or max duration reached
+  let EVENT_ID_REC_STOP = "RecStop"
+  let EVENT_ID_PLAY_STOP = "PlayStop"
 
   //Recording stop codes
   let REC_STOP_CODE_REQUESTED = "Requested" //Ever used, in iOS?
   let REC_STOP_CODE_MAX_DURATION_REACHED = "MaxDurationReached"
-  let REC_STOP_CODE_ERROR = "ERROR"
+  let REC_STOP_CODE_ERROR = "Error"
+
+  //Play stop codes
+  let PLAY_STOP_CODE_REQUESTED = "Requested" //Ever used, in iOS?
+  let PLAY_STOP_CODE_MAX_DURATION_REACHED = "MaxDurationReached"
+  let PLAY_STOP_CODE_ERROR = "Error"
     
   //Event metadata keys 
   let KEY_IS_RECORDING = "isRecording"
   let KEY_IS_MUTED = "isMuted"
   let KEY_REC_METER_LEVEL = "recMeterLevel"
   let KEY_REC_STOP_CODE = "recStopCode"
+  let KEY_PLAY_STOP_CODE = "playStopCode"
   let KEY_REC_ELAPSED_MS = "recElapsedMs"
   let KEY_PLAY_ELAPSED_MS = "playElapsedMs"
   let KEY_PLAY_DURATION_MS = "playDurationMs"
 
+  //Recorder states
+  let RECORDER_STATE_RECORDING = "RECORDER_STATE_RECORDING"
+  let RECORDER_STATE_PAUSED = "RECORDER_STATE_PAUSED"
+  let RECORDER_STATE_STOPPED = "RECORDER_STATE_STOPPED"
 
+  //Player states
+  let PLAYER_STATE_PLAYING = "PLAYER_STATE_PLAYING"
+  let PLAYER_STATE_PAUSED = "PLAYER_STATE_PAUSED"
+  let PLAYER_STATE_STOPPED = "PLAYER_STATE_STOPPED"
+
+  //Default filename info
   let DEFAULT_FILENAME_PLACEHOLDER = "DEFAULT"
   let DEFAULT_FILENAME = "sound.m4a"
 
-  let ABSOLUTE_MAX_DURATION_SEC = 2 * 60.0 * 60.0
   let DEFAULT_MAX_REC_DURATION_SEC = 10.0
   let DEFAULT_SUBSCRIPTION_DURATION_SEC = 0.5
 
@@ -70,7 +88,6 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   var recMeteringEnabled: Bool = false
 
   // Playback-related
-  var pausedPlayTime: CMTime?
   var audioPlayerAsset: AVURLAsset!
   var audioPlayerItem: AVPlayerItem!
   var audioPlayer: AVPlayer!
@@ -84,6 +101,9 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     self.maxRecDurationSec = DEFAULT_MAX_REC_DURATION_SEC
   }
     
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
 
   override static func requiresMainQueueSetup() -> Bool {
     return true
@@ -92,9 +112,10 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   override func supportedEvents() -> [String]! {
     return [ 
-      EVENT_ID_PLAY_UPDATE,
       EVENT_ID_REC_UPDATE,
-      EVENT_ID_REC_STOP
+      EVENT_ID_REC_STOP,
+      EVENT_ID_PLAY_UPDATE,
+      EVENT_ID_PLAY_STOP
     ]
   }
 
@@ -210,6 +231,36 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     }
   }
 
+ 
+  func sendRecStopEvent(recStopCode:String) {
+    sendEvent(withName: EVENT_ID_REC_STOP, body: [
+      KEY_REC_STOP_CODE: recStopCode
+    ] as [String : String])
+  }
+      
+  func sendPlayStopEvent(playStopCode:String) {
+    sendEvent(withName: EVENT_ID_PLAY_STOP, body: [
+      KEY_PLAY_STOP_CODE: playStopCode
+    ] as [String : String])
+  }
+
+
+  @objc(getRecorderState:rejecter:)
+  func getRecorderState(resolver resolve: @escaping RCTPromiseResolveBlock,
+                        rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+    print("RnAudio.getRecorderState()")
+    if (audioRecorder != nil && audioRecorder.isRecording) {
+      resolve(RECORDER_STATE_RECORDING)
+    }
+    else if (audioRecorder != nil && !audioRecorder.isRecording) {
+      resolve(RECORDER_STATE_PAUSED)
+    }
+    else {
+      resolve(RECORDER_STATE_STOPPED)
+    }
+  }
+
+
   @objc(startRecorder:resolve:reject:)
   func startRecorder(recordingOptions: [String: Any],
                      resolver resolve: @escaping RCTPromiseResolveBlock,
@@ -240,9 +291,6 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     self.audioFileURL = constructAudioFileURL(path: ro[audioFilePathKey] as? String)
     self.recMeteringEnabled = (ro[recMeteringEnabledKey] as? Bool) ?? true
     self.maxRecDurationSec = (ro[maxRecDurationSecKey] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
-    if (self.maxRecDurationSec > ABSOLUTE_MAX_DURATION_SEC) {
-      self.maxRecDurationSec = ABSOLUTE_MAX_DURATION_SEC
-    }
     let sampleRate = ro[sampleRateKey] as? Int ?? 44100
     let numChannels = ro[numChannelsKey] as? Int ?? 1
     //Apple-specific
@@ -273,14 +321,6 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("      lpcmIsBigEndian: ", lpcmIsBigEndian)
     print("      lpcmIsFloatKey: ", lpcmIsFloatKey)
     print("      lpcmIsNonInterleaved: ", lpcmIsNonInterleaved)
-
-    func sendStopCodeErrorEvent() {
-      print("RnAudio.startRecorder.sendStopCodeErrorEvent()")
-      let status = [
-        KEY_REC_STOP_CODE: REC_STOP_CODE_ERROR
-      ] as [String : String];
-      sendEvent(withName: EVENT_ID_REC_STOP, body: status)
-    }
 
     func startRecording() {
       print("RnAudio.startRecorder.startRecording()")
@@ -322,8 +362,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
                                 settings: avAudioRecorderRequestedSettings)
         
         if (audioRecorder == nil) {
-          sendStopCodeErrorEvent()
-          return reject("RnAudio", "Error occured during initiating recorder", nil)
+          sendRecStopEvent(recStopCode: REC_STOP_CODE_ERROR)
+          return reject(TAG, "Error occured during initiating recorder", nil)
         }
   
         audioRecorder.prepareToRecord()
@@ -360,8 +400,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
         
         let isRecordStarted = audioRecorder.record()
         if (!isRecordStarted) {
-          sendStopCodeErrorEvent()
-          return reject("RnAudio", "Error calling audioRecorder.record()", nil)
+          sendRecStopEvent(recStopCode: REC_STOP_CODE_ERROR)
+          return reject(TAG, "Error calling audioRecorder.record()", nil)
         }
 
         startRecorderTimer()
@@ -369,8 +409,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
         return resolve(grantedOptions)
       } 
       catch {
-        sendStopCodeErrorEvent()
-        return reject("RnAudio", "startRecording() - Error occured", nil)
+        sendRecStopEvent(recStopCode: REC_STOP_CODE_ERROR)
+        return reject(TAG, "startRecording() - Error occured", nil)
       }
     }
 
@@ -387,12 +427,12 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
           if granted {
             startRecording()
           } else {
-            return reject("RnAudio", "Record permission not granted", nil)
+            return reject(self.TAG, "Record permission not granted", nil)
           }
         }
       }
     } catch {
-      return reject("RnAudio", "Failed to record", nil)
+      return reject(TAG, "Failed to record", nil)
     }
   }
 
@@ -404,14 +444,15 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   ) -> Void {
     print("RnAudio.pauseRecorder()")
     if (audioRecorder == nil) {
-      return reject("RnAudio", "Recorder is not recording", nil)
+      return reject(TAG, "Can't pause recording; recorder is not recording", nil)
     }
 
     recordTimer?.invalidate()
     recordTimer = nil;
 
     audioRecorder.pause()
-    return resolve("Recorder paused!")
+
+    return resolve("Recording paused")
   }
 
 
@@ -423,7 +464,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("RnAudio.resumeRecorder()")
 
     if (audioRecorder == nil) {
-      return reject("RnAudio", "Recorder is nil", nil)
+      return reject(TAG, "Can't resume recording; recorder is not recording", nil)
     }
 
     audioRecorder.record()
@@ -432,7 +473,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       startRecorderTimer()
     }
 
-    resolve("Recorder paused!")
+    resolve("Recording resumed")
   }
 
 
@@ -442,24 +483,27 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
     print("RnAudio.stopRecorder()")
+    
     if (audioRecorder == nil) {
-      return reject("RnAudio", "Failed to stop recorder. It is already nil.", nil)
+      return resolve("Recorder already stopped.")
     }
+
     stopRecorderInner()
     
     let status = [ 
       KEY_REC_STOP_CODE: REC_STOP_CODE_REQUESTED,
       audioFilePathKey: self.audioFileURL!.absoluteString
     ] as [String : String];
+    sendEvent(withName: EVENT_ID_REC_STOP, body: status)
 
     return resolve(status)
   }
   func stopRecorderInner() { // requested: Not due to error or timeout
     print("RnAudio.stopRecorderInner()")
-    if (audioRecorder == nil) {
-      return
+    if (audioRecorder != nil) {
+      audioRecorder.stop()
+      audioRecorder = nil
     }
-    audioRecorder.stop()
     if (recordTimer != nil) {
       recordTimer!.invalidate()
       recordTimer = nil
@@ -481,9 +525,9 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     }
   }
 
-  @objc(updateRecorderProgress:)
-  public func updateRecorderProgress(timer: Timer) -> Void {
-    print("RnAudio.updateRecorderProgress()")
+
+  @objc func updateRecorderProgress(timer: Timer) -> Void {
+      print("RnAudio.updateRecorderProgress()")
     if (audioRecorder == nil) {
       return
     }
@@ -506,17 +550,23 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   }
 
 
-  // ** IS THIS USED? **
-  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-    print("RnAudio.audioRecorderDidFinishRecording()")
-    if !flag {
-      print("Failed to stop recorder")
-    }
-    print("FINISHED RECORDING")
-  }
-
-
   // PLAYER
+
+
+  @objc(getPlayerState:rejecter:)
+  func getPlayerState(resolver resolve: @escaping RCTPromiseResolveBlock,
+                      rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+    print("RnAudio.getPlayerState()")
+      if (audioPlayer != nil && audioPlayer.rate != 0) {
+      resolve(PLAYER_STATE_PLAYING)
+    }
+      else if (audioPlayer != nil && audioPlayer.rate == 0.0) {
+      resolve(PLAYER_STATE_PAUSED)
+    }
+    else {
+      resolve(PLAYER_STATE_STOPPED)
+    }
+  }
 
 
   @objc(startPlayer:httpHeaders:playbackVolume:resolver:rejecter:)
@@ -540,7 +590,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       try self.audioSession.setActive(true)
     } 
     catch {
-      return reject("RnAudio", "Failed to play", nil)
+      sendPlayStopEvent(playStopCode: PLAY_STOP_CODE_ERROR)
+      return reject(TAG, "Failed to play", nil)
     }
     self.audioFileURL = constructAudioFileURL(path: path)
     audioPlayerAsset = AVURLAsset(url: self.audioFileURL!, 
@@ -552,14 +603,26 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     else {
       audioPlayer.replaceCurrentItem(with: audioPlayerItem)
     }
-    addPeriodicTimeObserver()
+
+    setPlayerVolumeInner(volume: playbackVolume)
+
+    NotificationCenter.default.addObserver(
+      self, 
+      selector: #selector(self.audioPlayerDidFinishPlaying),
+      name: NSNotification.Name.AVPlayerItemDidPlayToEndTime,
+      object: nil
+    )
+
+    addPeriodicTimeObserver() 
+    
     audioPlayer.play()
+    
     let status = [ 
       audioFilePathKey: self.audioFileURL!.absoluteString
     ] as [String : String];
+      
     return resolve(status)
   }
-
 
   @objc(pausePlayer:rejecter:)
   public func pausePlayer(
@@ -568,10 +631,10 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   ) -> Void {
     print("RnAudio.pausePlayer()")
     if (audioPlayer == nil) {
-      return reject("RnAudio", "Player is not playing", nil)
+      return reject(TAG, "Can't pause playback; player is not playing", nil)
     }
     audioPlayer.pause()
-    return resolve("Player paused!")
+    return resolve("Playback paused")
   }
 
 
@@ -582,7 +645,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   ) -> Void {
     print("RnAudio.resumePlayer()")
     if (audioPlayer == nil) {
-      return reject("RnAudio", "Player is not playing", nil)
+      return reject(TAG, "Can't resume playback; player is not playing", nil)
     }
     audioPlayer.play()
     return resolve("Playback resumed")
@@ -596,15 +659,18 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   ) -> Void {
     print("RnAudio.resumePlayer()")
     if (audioPlayer == nil) {
-      return reject("RnAudio", "Player is already stopped.", nil)
+      return resolve("Player is already stopped.")
     }
     audioPlayer.pause()
     self.removePeriodicTimeObserver()
     self.audioPlayer = nil;
-    let status = [ 
+    
+    //Send stop event
+    sendPlayStopEvent(playStopCode: PLAY_STOP_CODE_REQUESTED)
+  
+    return resolve([ 
       audioFilePathKey: self.audioFileURL!.absoluteString
-    ] as [String : String];
-    return resolve(status)
+    ] as [String : String])
   }
 
 
@@ -616,29 +682,35 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   ) -> Void {
     print("RnAudio.seekToPlayer()")
     if (audioPlayer == nil) {
-        return reject("RnAudio", "Player is not playing", nil)
+        return reject(TAG, "Player is not playing", nil)
     }
     audioPlayer.seek(to: CMTime(seconds: time / 1000, preferredTimescale: CMTimeScale(NSEC_PER_SEC)))
     return resolve("Seek successful")
   }
 
 
-  @objc(setVolume:resolver:rejecter:)
-  public func setVolume(
-    volume: Float,
+  @objc(setPlayerVolume:resolver:rejecter:)
+  public func setPlayerVolume(
+    volume: Double,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
-    print("RnAudio.setVolume()")
-    audioPlayer.volume = volume
+    print("RnAudio.setPlayerVolume()")
+    if (volume < 0.0 || volume > 1.0) {
+      return reject(TAG, "RnAudio.setPlayerVolume() - Error: volume must be between [0.0 - 1.0] ", nil)
+    }
+    setPlayerVolumeInner(volume: volume)
     return resolve(volume)
+  }
+  private func setPlayerVolumeInner(volume:Double) {
+    audioPlayer?.volume = Float(volume)
   }
 
 
-  @objc(audioPlayerDidFinishPlaying:)
-  public static func audioPlayerDidFinishPlaying(player: AVAudioRecorder) -> Bool {
+  @objc func audioPlayerDidFinishPlaying(notification: NSNotification) {
     print("RnAudio.audioPlayerDidFinishPlaying()")
-    return true
+    audioPlayer = nil
+    sendPlayStopEvent(playStopCode: PLAY_STOP_CODE_MAX_DURATION_REACHED)
   }
 
 
