@@ -138,20 +138,20 @@ const recordingOptions:RecordingOptions = {
 
   //Shared
   audioFilePath: Platform.select({
-  //ios: 'recording.m4a',
-  ios: 'recording.wav',
-  //android: `${dirs.CacheDir}/recording.mp4`,
-  android: `${dirs.CacheDir}/recording.wav`,
+  ios: 'recording.m4a',
+  //ios: 'recording.wav',
+  android: `${dirs.CacheDir}/recording.mp4`,
+  //android: `${dirs.CacheDir}/recording.wav`,
   }),
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,
   sampleRate: 44100,
   numChannels: NumberOfChannelsId.ONE,
-  lpcmByteDepth: ByteDepthId.ONE,
+  lpcmByteDepth: ByteDepthId.TWO,
 
   //Apple-specific
-  //appleAudioFormatId: AppleAudioFormatId.aac,
-  appleAudioFormatId: AppleAudioFormatId.lpcm,
+  appleAudioFormatId: AppleAudioFormatId.aac,
+  //appleAudioFormatId: AppleAudioFormatId.lpcm,
   appleAVAudioSessionModeId: AppleAVAudioSessionModeId.measurement,
   //Apple encoded/compressed-specific
   appleAVEncoderAudioQualityId: AppleAVEncoderAudioQualityId.high,
@@ -161,10 +161,10 @@ const recordingOptions:RecordingOptions = {
   appleAVLinearPCMIsNonInterleaved: false,
 
   //Android-specific
-  //androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
-  androidOutputFormatId: AndroidOutputFormatId.WAV,
-  //androidAudioEncoderId: AndroidAudioEncoderId.AAC,
-  androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
+  androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
+  //androidOutputFormatId: AndroidOutputFormatId.WAV,
+  androidAudioEncoderId: AndroidAudioEncoderId.AAC,
+  //androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
   androidAudioSourceId: AndroidAudioSourceId.MIC,
   //Android encoded/compressed-specific
   androidAudioEncodingBitRate: 128000,
@@ -199,41 +199,6 @@ export default class App extends Component<any, State> {
       <SafeAreaView style={styles.container}>
         <Text style={styles.titleTxt}>RnAudio Example</Text>
         <Text style={styles.txtRecordCounter}>{this.state.recordingElapsedStr}</Text>
-        {/* <View style={styles.viewButtonRow}>
-          <View style={styles.viewButtonSet}>
-              <Button
-                style={styles.btn}
-                onPress={this.onStartAndroidWavRecord}
-                txtStyle={styles.txt}
-              >
-                wavRec
-              </Button>
-
-              <Button
-                style={styles.btn}
-                onPress={this.onPauseAndroidWavRecord}
-                txtStyle={styles.txt}
-              >
-                wavPause
-              </Button>
-
-              <Button
-                style={styles.btn}
-                onPress={this.onResumeAndroidWavRecord}
-                txtStyle={styles.txt}
-              >
-                wavResume
-              </Button>
-
-              <Button
-                style={styles.btn}
-                onPress={this.onStopAndroidWavRecord}
-                txtStyle={styles.txt}
-              >
-                wavStop
-              </Button>
-          </View>
-        </View> */}
         <View style={styles.viewButtonRow}>
           <View style={styles.viewButtonSet}>
             <Button
@@ -313,7 +278,8 @@ export default class App extends Component<any, State> {
   }
 
   private async ifAndroidEnsurePermissionsSecured():Promise<boolean> {
-    ilog('app.ifAndroidEnsurePermissionsSecured()')
+    const funcName = 'app.ifAndroidEnsurePermissionsSecured()'
+    ilog(funcName)
     if (Platform.OS === 'android') {
       try {
         const grants = await PermissionsAndroid.requestMultiple([
@@ -332,7 +298,7 @@ export default class App extends Component<any, State> {
           return true
         } 
         else {
-          wlog('Required android permissions NOT granted')
+          wlog(funcName + ' - Required android permissions NOT granted')
           return false
         }
       } catch (err) {
@@ -344,7 +310,8 @@ export default class App extends Component<any, State> {
   }
 
   private onStatusPress = (e: any):void => {
-    ilog('app.onStatusPress()')
+    const funcName = 'app.onStatusPress()'
+    ilog(funcName)
     const touchX = e.nativeEvent.locationX
     const playWidth =
       (this.state.playbackElapsedMs / this.state.playbackDurationMs) *
@@ -353,23 +320,24 @@ export default class App extends Component<any, State> {
     if (playWidth && playWidth < touchX) {
       const addSecs = Math.round(playbackElapsedMs + 1000)
       audio.seekToPlayer(addSecs)
-      ilog(`addSecs: ${addSecs}`)
+      ilog(funcName + ` - addSecs: ${addSecs}`)
     } 
     else {
       const subSecs = Math.round(playbackElapsedMs - 1000)
       audio.seekToPlayer(subSecs)
-      ilog(`subSecs: ${subSecs}`)
+      ilog(funcName + `- subSecs: ${subSecs}`)
     }
   }
 
   private onStartRecord = async ():Promise<undefined> => {
-    ilog('app.onStartRecord()')
+    const funcName = 'app.onStartRecord()'
+    ilog(funcName)
     if (await this.ifAndroidEnsurePermissionsSecured() !== true) {
-      const errStr = 'Android permissions not secured'
-      elog('app.onStartRecord(): ', errStr)
+      const errStr = funcName + ' - Android permissions not secured'
+      elog(errStr)
       return Promise.reject(errStr)
     }
-    ilog('recordingOptions:', recordingOptions)
+    ilog(funcName + ' - recordingOptions: ', recordingOptions)
     const recUpdateCallback = (e: RecUpdateMetadata) => {
       ilog('app.recUpdateCallback() - metadata: ', e)
       this.setState({
@@ -395,11 +363,11 @@ export default class App extends Component<any, State> {
       recStopCallback
     }))
     if (err) {
-      const errMsg = 'app.onStartRecord() - Error:' + err
+      const errMsg = funcName + ' - Error:' + err
       elog(errMsg)
       return
     }
-    ilog('app.onStartRecord() - Result:', res)
+    ilog(funcName + ' - Result:', res)
     return
   }
 
@@ -416,34 +384,35 @@ export default class App extends Component<any, State> {
   }
 
   private onResumeRecord = async ():Promise<undefined> => {
-    ilog('app.onResumeRecord()')
+    const funcName = 'app.onResumeRecord()'
+    ilog(funcName)
     const [err, res] = await to<string>(audio.resumeRecorder())
     if (err) {
-      const errMsg = 'app.onResumeRecord() - Error: ' + err
+      const errMsg = funcName + ' - Error: ' + err
       elog(errMsg)
       return
     }
-    ilog('app.onResumeRecord() - Result: ',  res)
+    ilog(funcName + ' - Result: ',  res)
     return
   }
 
   private onStopRecord = async ():Promise<undefined> => {
-    ilog('app.onStopRecord()')
+    const funcName = 'app.onStopRecord()'
+    ilog(funcName)
     const [err, res] = await to<object|string>(audio.stopRecorder())
     if (err) {
-      const errMsg = 'app.onStopRecord() - Error: ' + err
+      const errMsg = funcName + ' - Error: ' + err
       elog(errMsg)
       return
     }
-    this.setState({
-      recordingElapsedMs: 0,
-    })
-    ilog('app.onStopRecord() - Result: ', res)
+    this.setState({ recordingElapsedMs: 0 })
+    ilog(funcName + ' - Result: ', res)
     return
   }
 
   private onStartPlay = async ():Promise<undefined> => {
-    ilog('app.onStartPlay()')
+    const funcName = 'app.onStartPlay()'
+    ilog(funcName)
     const playUpdateCallback = (e: PlayUpdateMetadata) => {
       ilog('app.playUpdateEventCallback() - metadata: ', e)
       this.setState({
@@ -457,7 +426,7 @@ export default class App extends Component<any, State> {
       ilog('app.playStopCallback() - metadata:', e)
       const [err,] = await to<string|undefined>(this.onStopPlay())
       if (err) {
-        const errStr = 'In playStopCallback - error calling onStopPlay(): ' + e
+        const errStr = 'In playStopCallback - error calling app.onStopPlay(): ' + e
         elog(errStr)
         return
       }
@@ -470,48 +439,50 @@ export default class App extends Component<any, State> {
       playVolume: 1.0,
     }))
     if (err) {
-      const errStr = 'app.onStartPlay: ' + err
+      const errStr = funcName + ': ' + err
       elog(errStr)
       return
     }
-    ilog('app.onStartPlay() - Result: ',  res)
+    ilog(funcName + ' - Result: ',  res)
     return
   }
 
   private onPausePlay = async () => {
-    ilog('app.onPausePlay()')
-    ilog('   index.pausePlayer()')
+    const funcName = 'app.onPausePlay()'
+    ilog(funcName)
     const [err, res] = await to<string>(audio.pausePlayer())
     if (err) {
-      const errStr = 'app.onPausePlay: ' + err
+      const errStr = funcName + ': ' + err
       elog(errStr)
       return
     }
-    ilog('app.onPausePlay() - Result: ', res)
+    ilog(funcName + ' - Result: ', res)
     return res
   }
 
   private onResumePlay = async () => {
-    ilog('app.onResumePlay()')
+    const funcName = 'app.onResumePlay()'
+    ilog(funcName)
     const [err, res] = await to<string>(audio.resumePlayer())
     if (err) {
-      const errStr = 'app.onResumePlay: ' + err
+      const errStr = funcName + ': ' + err
       elog(errStr)
       return
     }
-    ilog('app.onResumePlay() - Result: ', res)
+    ilog(funcName + ' - Result: ', res)
     return res
   }
 
   private onStopPlay = async () => {
-    ilog('app.onStopPlay()')
+    const funcName = 'app.onStopPlay()'
+    ilog(funcName)
     this.setState({
       playbackElapsedMs: 0,
       playbackElapsedStr: audio.mmssss(0)
     })
     const [err, res] = await to<string>(audio.stopPlayer())
     if (err) {
-      const errStr = 'app.onStopPlay: ' + err
+      const errStr = funcName + ': ' + err
       elog(errStr)
       return
     }
