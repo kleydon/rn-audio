@@ -135,14 +135,15 @@ const audio = new Audio();
 audio.setSubscriptionDuration(0.15) // optional; default is (0.5)
 
 const recordingOptions:RecordingOptions = {
-  //audioFilePath: 'https://download.samplelib.com/wav/sample-3s.wav'
+  
+  //audioFileNameOrPath: 'https://download.samplelib.com/wav/sample-3s.wav'
 
   //Shared
-  audioFilePath: Platform.select({
-  ios: 'recording.m4a',
-  //ios: 'recording.wav',
-  android: `${dirs.CacheDir}/recording.mp4`,
-  //android: `${dirs.CacheDir}/recording.wav`,
+  audioFileNameOrPath: Platform.select({
+    //ios: 'recording.m4a',
+    ios: 'recording.wav',
+    //android: 'recording.mp4',
+    android: 'recording.wav',
   }),
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,
@@ -151,8 +152,8 @@ const recordingOptions:RecordingOptions = {
   lpcmByteDepth: ByteDepthId.TWO,
 
   //Apple-specific
-  appleAudioFormatId: AppleAudioFormatId.aac,
-  //appleAudioFormatId: AppleAudioFormatId.lpcm,
+  //appleAudioFormatId: AppleAudioFormatId.aac,
+  appleAudioFormatId: AppleAudioFormatId.lpcm,
   appleAVAudioSessionModeId: AppleAVAudioSessionModeId.measurement,
   //Apple encoded/compressed-specific
   appleAVEncoderAudioQualityId: AppleAVEncoderAudioQualityId.high,
@@ -162,10 +163,10 @@ const recordingOptions:RecordingOptions = {
   appleAVLinearPCMIsNonInterleaved: false,
 
   //Android-specific
-  androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
-  //androidOutputFormatId: AndroidOutputFormatId.WAV,
-  androidAudioEncoderId: AndroidAudioEncoderId.AAC,
-  //androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
+  //androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
+  androidOutputFormatId: AndroidOutputFormatId.WAV,
+  //androidAudioEncoderId: AndroidAudioEncoderId.AAC,
+  androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
   androidAudioSourceId: AndroidAudioSourceId.MIC,
   //Android encoded/compressed-specific
   androidAudioEncodingBitRate: 128000,
@@ -434,7 +435,7 @@ export default class App extends Component<any, State> {
       return
     }
     const [err, res] = await to<object|string>(audio.startPlayer({
-      uri: recordingOptions.audioFilePath,
+      fileNameOrPathOrURL: recordingOptions.audioFileNameOrPath,
       playUpdateCallback,
       playStopCallback,
       playVolume: 1.0,

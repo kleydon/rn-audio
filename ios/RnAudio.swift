@@ -44,7 +44,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   let PLAYER_STATE_STOPPED = "Stopped"
 
   //Default filename info
-  let DEFAULT_FILENAME_PLACEHOLDER = "DEFAULT"
+  let DEFAULT_FILE_NAME_PLACEHOLDER = "DEFAULT"
   let DEFAULT_FILENAME = "sound.m4a"
 
   let DEFAULT_MAX_REC_DURATION_SEC = 10.0
@@ -53,7 +53,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   //Misc. Keys - for event details, and resolved promise values
   //Cross-platform
-  let audioFilePathKey = "audioFilePath"
+  let audioFileNameOrPathKey = "audioFileNameOrPath"
   let recMeteringEnabledKey = "recMeteringEnabled"
   let maxRecDurationSecKey = "maxRecDurationSec"
   let sampleRateKey = "sampleRate"
@@ -73,9 +73,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   //Other
   let grantedOptionsKey = "grantedOptions"
 
-  //File path/URL
-  //NOTE: Set this with constructAudioFileURL()
-  var audioFileURL: URL? = nil
+  // Set this with resolveFilePathOrURL(). Can only be a URL when playing; not recording
+  var audioFilePathOrURL: URL? = nil
 
   //Durations
   var subscriptionDurationSec: Double = 0.5 // Initialized in constructor
@@ -123,7 +122,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   func createRecStopResult(recStopCode:String) -> [String: Any] {
     return [
       KEY_REC_STOP_CODE: recStopCode,
-      audioFilePathKey: self.audioFileURL?.absoluteString ?? ""
+      audioFileNameOrPathKey: self.audioFilePathOrURL?.absoluteString ?? ""
     ] as [String : Any]
   }
 
@@ -153,7 +152,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   func createPlayStopResult(playStopCode: String) -> [String: Any] {
     return [
       KEY_PLAY_STOP_CODE: playStopCode,
-      audioFilePathKey: self.audioFileURL?.absoluteString ?? ""
+      audioFileNameOrPathKey: self.audioFilePathOrURL?.absoluteString ?? ""
     ] as [String : Any]
   }
 
@@ -171,21 +170,22 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   }
 
 
-  func constructAudioFileURL(path: String?) -> URL {
-    let funcName = TAG + ".constructAudioFileURL()"
+  func resolveFilePathOrURL(rawFileNameOrPathOrURL: String?) -> URL {
+    let funcName = TAG + ".resolveFilePathOrURL()"
     print(funcName)
-    if (path != nil && 
-        (path!.hasPrefix("http://") || 
-         path!.hasPrefix("https://") || 
-         path!.hasPrefix("file://") ||
-         path!.hasPrefix("/") ||
-         path!.hasPrefix("./") ||
-         path!.hasPrefix("../"))) {
-      return URL(string: path!)!
+    let v = rawFileNameOrPathOrURL
+    if (v != nil && 
+        (v!.hasPrefix("http://") || 
+         v!.hasPrefix("https://") || 
+         v!.hasPrefix("file://") ||
+         v!.hasPrefix("/") ||
+         v!.hasPrefix("./") ||
+         v!.hasPrefix("../"))) {
+      return URL(string: v!)!
     }
-      else if (path != nil && path != "" && path != DEFAULT_FILENAME_PLACEHOLDER) {
+    else if (v != nil && v != "" && v != DEFAULT_FILE_NAME_PLACEHOLDER) {
       let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-      return cachesDirectory.appendingPathComponent(path!)
+      return cachesDirectory.appendingPathComponent(v!)
     }
     else { // Could do more to provide the right filename based on knowing
            // the encoding...
@@ -305,7 +305,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     print("  Requested recordingOptions:", ro)
     print("    shared:")
-    print("      audioFilePath: ", ro[audioFilePathKey] as Any)
+    print("      audioFileNameOrPath: ", ro[audioFileNameOrPathKey] as Any)
     print("      recMeteringEnabled: ", ro[recMeteringEnabledKey] as Any)
     print("      maxRecDurationSec: ", ro[maxRecDurationSecKey] as Any)
     print("      sampleRate: ", ro[sampleRateKey] as Any)
@@ -322,7 +322,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("        lpcmIsNonInterleaved: ", ro[appleAVLinearPCMIsNonInterleavedKey] as Any)
 
     //Shared
-    self.audioFileURL = constructAudioFileURL(path: ro[audioFilePathKey] as? String)
+    self.audioFilePathOrURL = resolveFilePathOrURL(rawFileNameOrPathOrURL: ro[audioFileNameOrPathKey] as? String ?? DEFAULT_FILE_NAME_PLACEHOLDER)
     self.recMeteringEnabled = (ro[recMeteringEnabledKey] as? Bool) ?? true
     self.maxRecDurationSec = (ro[maxRecDurationSecKey] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
     let sampleRate = ro[sampleRateKey] as? Int ?? 44100
@@ -340,7 +340,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     print("  COERCED recordingOptions:")
     print("    shared:")
-    print("      audioFileUrl: ", audioFileURL!)
+    print("      audioFilePathOrURL: ", audioFilePathOrURL!)
     print("      recMeteringEnabled: ", recMeteringEnabled)
     print("      maxRecDurationSec: ", maxRecDurationSec)
     print("      sampleRate: ", sampleRate)
@@ -385,14 +385,14 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
         
       print("  ")
       print("  ")
-      print("  audioFileURL:", self.audioFileURL!)
+      print("  audioFilePathOrURL:", self.audioFilePathOrURL!)
       print("  ")
       print("  avAudioRecorderRequestedSettings:", avAudioRecorderRequestedSettings)
       print("  ")
       print("  ")
         
       do {
-        audioRecorder = try AVAudioRecorder(url: self.audioFileURL!, 
+        audioRecorder = try AVAudioRecorder(url: self.audioFilePathOrURL!, 
                                 settings: avAudioRecorderRequestedSettings)
         
         if (audioRecorder == nil) {
@@ -408,7 +408,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
         //Begin set of granted recording options that will actually be used
         var grantedOptions = [
           //Cross-platform
-          audioFilePathKey: self.audioFileURL!.absoluteString,
+          audioFileNameOrPathKey: self.audioFilePathOrURL!.absoluteString,
           recMeteringEnabledKey: self.recMeteringEnabled,
           maxRecDurationSecKey: self.maxRecDurationSec,
           sampleRateKey: audioRecorder.settings[AVSampleRateKey]!,
@@ -610,7 +610,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   @objc(startPlayer:httpHeaders:playbackVolume:resolver:rejecter:)
   public func startPlayer(
-    path: String,
+    fileNameOrPathOrURL: String,
     httpHeaders: [String: String],
     playbackVolume: Double,
     resolver resolve: @escaping RCTPromiseResolveBlock,
@@ -633,9 +633,9 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       sendPlayStopEvent(playStopCode: PLAY_STOP_CODE_ERROR)
       return reject(TAG, funcName + "Failed to play", nil)
     }
-    self.audioFileURL = constructAudioFileURL(path: path)
-    audioPlayerAsset = AVURLAsset(url: self.audioFileURL!, 
-                              options: ["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
+    self.audioFilePathOrURL = resolveFilePathOrURL(rawFileNameOrPathOrURL: fileNameOrPathOrURL)
+    audioPlayerAsset = AVURLAsset(url: self.audioFilePathOrURL!, 
+                                  options: ["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
     audioPlayerItem = AVPlayerItem(asset: audioPlayerAsset!)
     if (audioPlayer == nil) {
       audioPlayer = AVPlayer(playerItem: audioPlayerItem)
@@ -658,7 +658,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     audioPlayer.play()
           
     return resolve([
-      audioFilePathKey: self.audioFileURL!.absoluteString
+      audioFileNameOrPathKey: self.audioFilePathOrURL!.absoluteString
     ] as [String : String])
   }
 

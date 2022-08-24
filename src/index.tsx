@@ -147,7 +147,7 @@ export enum RecorderState {
 
 export interface RecordingOptions {
   
-  audioFilePath?: string,
+  audioFileNameOrPath?: string,
   recMeteringEnabled?: boolean,
   maxRecDurationSec?: number,
   sampleRate?: number,
@@ -215,7 +215,7 @@ export type PlayUpdateMetadata = {
 }
 
 interface StartPlayerArgs {
-  uri?: string,
+  fileNameOrPathOrURL?: string,
   httpHeaders?: Record<string, string>,
   playUpdateCallback?: ((playUpdateMetadata: PlayUpdateMetadata) => void) | null
   playStopCallback?: ((playStopMetadata: PlayStopMetadata) => void) | null
@@ -238,6 +238,9 @@ const pad = (num: number): string => {
   return ('0' + num).slice(-2)
 }
 
+const DEFAULT_WAV_FILE_NAME = 'recording.wav'
+const DEFAULT_FILE_NAME_PLACEHOLDER = 'DEFAULT'  //Keep snyced w/ native implementations
+
 export class Audio {
   private _playUpdateCallback: ((playUpdateMetadata: PlayUpdateMetadata) => void) | null
   private _recUpdateSubscription: EmitterSubscription | null
@@ -252,66 +255,185 @@ export class Audio {
     this._playStopSubscription = null
   }
 
-  recordingOptionsLooselyValidate = (recordingOptions:RecordingOptions): boolean => {
+  resolveAndValidateRecordingOptions = async (recordingOptions:RecordingOptions): Promise<boolean> => {
 
-    ilog('index.recordingOptionsLooselyValidate()')
+    // This function is FAR from complete. 
+    // Currently, it mainly helps to ensure successful wav file recording.
 
-    // Re: Android, see: https://developer.android.com/guide/topics/media/media-formats
+    // Useful for the future, re: Android:
+    //  https://developer.android.com/guide/topics/media/media-formats
+
+    ilog('index.resolveAndValidateRecordingOptions()')
     
-    const o = recordingOptions
-    const lcFilePath = o.audioFilePath?.toLowerCase()
+    const ro = recordingOptions
+    var lcFileNameOrPath = ro.audioFileNameOrPath?.toLowerCase()
 
-    ilog('(Loosely) validating recording options...')
+    ilog('Validating recording options...')
 
     let res = true;  // Default to valid
+    let errMsgs:String[] = [] 
 
     //Allow fully-default set of options
     if (recordingOptions === {}) {
       return res;
     }
 
-    //If number of channels > 2
-    if (o.numChannels && o.numChannels > 2) {
-      elog('Number of channels must be < 2.')
-      res = false
+    //INDEPENDENT parameter coercion/validation
+    //++++++++++++++++++++
+
+    //Coercing empty numChannels
+    if (ro.numChannels === undefined) {
+      ilog('Coercing (empty) numChannels to 1')
+      ro.numChannels = 1
     }
-    
-    //If filename ends with '.wav', and format/encoding/sampling rate don't match
-    if (lcFilePath?.endsWith('.wav')) {
-      const fileIsWavPrefixStr = 'File is .wav, but '
-      if (o.androidOutputFormatId !== AndroidOutputFormatId.WAV) {
+
+    //Coercing empty lpcmByteDepth
+    if (ro.lpcmByteDepth === undefined) {
+      ilog('Coercing (empty) lpcmByteDepth to 2')
+      ro.lpcmByteDepth = ByteDepthId.TWO
+    }
+
+    //Coercing empty sample rate
+    if (ro.sampleRate === undefined) {
+      ilog('Coercing (empty) sampleRate to 44100')
+      ro.sampleRate = 44100
+    }
+
+    //File name/path validation
+    if (lcFileNameOrPath && 
+      lcFileNameOrPath !== DEFAULT_FILE_NAME_PLACEHOLDER) {
+      //If file name/path doesn't have a .suffix
+      if (lcFileNameOrPath.includes('.') === false) {
+        const errMsg = 'File name/path must end with .<suffix>'
+        elog(errMsg); errMsgs.push(errMsg)
         res = false
-        elog(fileIsWavPrefixStr + 'androidOutputFormatId is:' + o.androidOutputFormatId)
       }
-      if (o.androidAudioEncoderId !== AndroidAudioEncoderId.LPCM) {
+      //If file name/path is accidentally a URL
+      if (lcFileNameOrPath.startsWith('http:') || 
+          lcFileNameOrPath.startsWith('https:')) {
+        const errMsg = 'Recording file name/path cannot be a URL.'
+        elog(errMsg); errMsgs.push(errMsg)
         res = false
-        elog(fileIsWavPrefixStr + 'androidAudioEncoderId is:' + o.androidAudioEncoderId)
-      }
-      if (o.lpcmByteDepth && 
-          (o.lpcmByteDepth === 1 || o.lpcmByteDepth === 2) === false) {
-        res = false
-        elog(fileIsWavPrefixStr + 'wavByteDepth is:' + o.lpcmByteDepth)
-      }
-      if (o.appleAudioFormatId !== AppleAudioFormatId.lpcm) {
-        res = false
-        elog(fileIsWavPrefixStr + 'appleAudioFormatId is:' + o.appleAudioFormatId)
-      }
-    } 
-   
-    //If filePath exists, DOESNT ends with .wav, and format or encoding ARE for wav...
-    if ((lcFilePath && lcFilePath!.endsWith('wav')) === false) {
-      const fileIsntWavPrefixStr = 'File isn\'t .wav, but '
-      if (o.androidOutputFormatId === AndroidOutputFormatId.WAV) {
-        res = false
-        elog(fileIsntWavPrefixStr + 'androidOutputFormatId is:' + o.androidOutputFormatId)
-      }
-      if (o.androidAudioEncoderId === AndroidAudioEncoderId.LPCM) {
-        res = false
-        elog(fileIsntWavPrefixStr + 'androidAudioEncoderId is:' + o.androidAudioEncoderId)
       }
     }
 
-    return res
+    //numChannels validation
+    if (ro.numChannels !== undefined && (ro.numChannels < 1 || ro.numChannels > 2)) {
+      const errMsg = 'Number of channels must be > 0 and <= 2.'
+      elog(errMsg); errMsgs.push(errMsg)
+      res = false
+    }
+
+    //lpcmByteDepth validation
+    if (ro.lpcmByteDepth !== undefined && (ro.lpcmByteDepth < 1 || ro.lpcmByteDepth > 2)) {
+      const errMsg = 'lpcmByteDepth must be >0 and <= 2.'
+      elog(errMsg); errMsgs.push(errMsg)
+      res = false
+    }
+    //--------------------
+
+    //COMBINED parameter coercion / validation
+    //++++++++++++++++++++
+
+    if (ro.androidOutputFormatId === AndroidOutputFormatId.WAV &&
+        ro.androidAudioEncoderId === undefined) {
+      ro.androidAudioEncoderId = AndroidAudioEncoderId.LPCM
+      ilog('androidOutputFormatId is for WAV; coercing (empty) androidAudioEncoderId accordingly')
+    }
+
+    if (ro.androidAudioEncoderId === AndroidAudioEncoderId.LPCM &&
+        ro.androidOutputFormatId === undefined) {
+      ro.androidOutputFormatId = AndroidOutputFormatId.WAV
+      ilog('androidAudioEncoderId is for LPCM; coercing (empty) androidOutputFormatId accordingly for WAV')
+    }
+
+    //If file name/path is undefined...
+    if (lcFileNameOrPath === undefined) {
+      //If format/encoding unambiguously indicate .WAV...
+      if ((Platform.OS === 'android' && 
+           ro.androidAudioEncoderId === AndroidAudioEncoderId.LPCM && 
+           ro.androidOutputFormatId === AndroidOutputFormatId.WAV) ||
+          (Platform.OS === 'ios' &&
+           ro.appleAudioFormatId === AppleAudioFormatId.lpcm)) {
+        ro.audioFileNameOrPath = DEFAULT_WAV_FILE_NAME
+        lcFileNameOrPath = ro.audioFileNameOrPath.toLowerCase()  // Update lowercase version
+        ilog('Format/encoding are for .wav; coercing (empty) audioFileNameOrPath to: ', ro.audioFileNameOrPath)
+      }
+    }
+
+    //If file name/path ends with '.wav'...
+    if (lcFileNameOrPath?.endsWith('.wav')) {
+
+      //Coerce empty format/encoding/sampling params to match .wav file name/path
+      const fileNameOrPathEndsWithWavPrefix = 'File name/path ends with \'.wav\'; '
+      if (ro.androidAudioEncoderId === undefined) {
+        ro.androidAudioEncoderId = AndroidAudioEncoderId.LPCM
+        ilog(fileNameOrPathEndsWithWavPrefix + 'coercing (empty) androidAudioEncoderId accordingly.')
+      }
+      if (ro.androidOutputFormatId === undefined) {
+        ro.androidOutputFormatId = AndroidOutputFormatId.WAV
+        ilog(fileNameOrPathEndsWithWavPrefix + 'coercing (empty) androidOutputFormat accordingly.')
+      }  
+      if (ro.appleAudioFormatId === undefined) {
+        ro.appleAudioFormatId = AppleAudioFormatId.lpcm
+        ilog(fileNameOrPathEndsWithWavPrefix + 'coercing (empty) appleAudioFormatId accordingly.')
+      }
+      if (ro.lpcmByteDepth === undefined) {
+        ro.lpcmByteDepth = ByteDepthId.TWO
+        ilog(fileNameOrPathEndsWithWavPrefix + 'coercing (empty) lpcmByteDepth accordingly.')
+      }
+
+      //Validate supplied format/encoding params against .wav file name/path
+      const fileIsWavPrefixStr = 'File name/path ends with \'.wav\', but '
+      if (Platform.OS === 'android') {
+        if (ro.androidOutputFormatId !== undefined && 
+            ro.androidOutputFormatId !== AndroidOutputFormatId.WAV) {
+          const errMsg = fileIsWavPrefixStr + 'androidOutputFormatId is: ' + ro.androidOutputFormatId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+        if (ro.androidAudioEncoderId !== undefined && 
+            ro.androidAudioEncoderId !== AndroidAudioEncoderId.LPCM) {
+          const errMsg = fileIsWavPrefixStr + 'androidAudioEncoderId is: ' + ro.androidAudioEncoderId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+      }
+      else if (Platform.OS === 'ios') {
+        if (ro.appleAudioFormatId !== AppleAudioFormatId.lpcm) {
+          const errMsg = fileIsWavPrefixStr + 'appleAudioFormatId is: ' + ro.appleAudioFormatId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+      }
+    } 
+
+    //If file name/path exists, and DOESN'T end with .wav, bug format / encoding indicate wav...
+    if (lcFileNameOrPath !== undefined && (lcFileNameOrPath.endsWith('.wav') === false)) {
+      const fileIsntWavPrefixStr = 'File name/path doesn\'t end with .wav, but '
+      if (Platform.OS === 'android') {
+        if (ro.androidOutputFormatId === AndroidOutputFormatId.WAV) {
+          const errMsg = fileIsntWavPrefixStr + 'androidOutputFormatId is: ' + ro.androidOutputFormatId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+        if (ro.androidAudioEncoderId === AndroidAudioEncoderId.LPCM) {
+          const errMsg = fileIsntWavPrefixStr + 'androidAudioEncoderId is: ' + ro.androidAudioEncoderId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+      } 
+      if (Platform.OS === 'ios') {
+        if (ro.appleAudioFormatId === AppleAudioFormatId.lpcm) {
+          const errMsg = fileIsntWavPrefixStr + 'appleAudioFormatId is: ' + ro.appleAudioFormatId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }  
+      }
+    }
+    //--------------------
+    
+    return res ? Promise.resolve(res) : Promise.reject('Recording Option resolution errors: ' + errMsgs.toString())
   }
 
   isWavAndAndroid = (path:string|undefined):boolean => {
@@ -494,8 +616,9 @@ export class Audio {
     const funcName = 'index.startRecorder()'
     ilog(funcName)
 
-    if (this.recordingOptionsLooselyValidate(recordingOptions) == false) {
-      return Promise.reject(funcName + '- Recording options don\'t validate.')
+    const [resolveErr, ] = await to(this.resolveAndValidateRecordingOptions(recordingOptions))
+    if (resolveErr) {
+      return Promise.reject(funcName + '- Recording options don\'t validate: ' + resolveErr)
     }
     
     ilog('  index.startRecorder() - resetting recorder in preparation')
@@ -616,7 +739,7 @@ export class Audio {
    * @returns {Promise<string>}
    */
   startPlayer = async ({
-    uri = 'DEFAULT',
+    fileNameOrPathOrURL = DEFAULT_FILE_NAME_PLACEHOLDER,
     httpHeaders,
     playUpdateCallback,
     playStopCallback = null,
@@ -624,6 +747,19 @@ export class Audio {
   }:StartPlayerArgs): Promise<string> => {
     const funcName = 'index.startPlayer()'
     ilog(funcName)
+
+    //Basic validation of fileNameOrPathOrURL
+    const lcFileNameOrPathOrURL = fileNameOrPathOrURL.toLowerCase()
+    if (lcFileNameOrPathOrURL && 
+        lcFileNameOrPathOrURL !== DEFAULT_FILE_NAME_PLACEHOLDER) {
+      //If file name/path doesn't have a .suffix
+      if (lcFileNameOrPathOrURL.includes('.') === false) {
+        const errMsg = 'File name/path must end with .<suffix>'
+        elog(errMsg)
+        return Promise.reject(funcName + ' - ' + errMsg)
+      }
+    }
+
     await this.resetPlayer()
     if (playUpdateCallback) {
       this._playUpdateCallback = playUpdateCallback
@@ -632,7 +768,9 @@ export class Audio {
     this.addPlayStopCallback(playStopCallback) //MUST call - even playStopCallback is null
 
     ilog(funcName + ' - calling RnAudio.startPlayer()')
-    const [err, res] = await to<string>(RnAudio.startPlayer(uri, httpHeaders, playbackVolume))
+    const [err, res] = await to<string>(
+        RnAudio.startPlayer(fileNameOrPathOrURL, httpHeaders, playbackVolume)
+    )
     if (err) {
       const errStr = funcName + ' - ' + err
       elog(errStr)

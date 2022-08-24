@@ -26,7 +26,7 @@ RCT_EXTERN_METHOD(resumeRecorder:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(getPlayerState:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject);
 
-RCT_EXTERN_METHOD(startPlayer:(NSString*)path
+RCT_EXTERN_METHOD(startPlayer:(NSString*)fileNameOrPathOrURL
                   httpHeaders:(NSDictionary*)httpHeaders
                   playbackVolume:(double)playbackVolume
                   resolver:(RCTPromiseResolveBlock)resolve
