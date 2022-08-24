@@ -28,7 +28,8 @@ import React, {
   Component
 } from 'react'
 import Button from './components/Button'
-import RNFetchBlob from 'rn-fetch-blob'
+//import RNFetchBlob from 'rn-fetch-blob'
+import ReactNativeBlobUtil from 'react-native-blob-util'
 import to from 'await-to-js'
 
 const ilog = console.log
@@ -128,7 +129,7 @@ interface State {
 
 const screenWidth = Dimensions.get('screen').width
 
-const dirs = RNFetchBlob.fs.dirs
+const dirs = ReactNativeBlobUtil.fs.dirs
 
 const audio = new Audio();
 audio.setSubscriptionDuration(0.15) // optional; default is (0.5)

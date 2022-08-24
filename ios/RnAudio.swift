@@ -120,6 +120,49 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   }
 
 
+  func createRecStopResult(recStopCode:String) -> [String: Any] {
+    return [
+      KEY_REC_STOP_CODE: recStopCode,
+      audioFilePathKey: self.audioFileURL?.absoluteString ?? ""
+    ] as [String : Any]
+  }
+
+  func sendRecStopEvent(recStopCode:String) {
+    sendEvent(withName: EVENT_ID_REC_STOP, 
+                  body: createRecStopResult(recStopCode: recStopCode))
+  }
+
+  func sendRecUpdateEvent(elapsedMs:Double, isRecording:Bool, meterLevelDb:Float) {
+    sendEvent(withName: EVENT_ID_REC_UPDATE, body: [
+      KEY_IS_RECORDING: isRecording,
+      KEY_REC_ELAPSED_MS: elapsedMs,
+      KEY_REC_METER_LEVEL: meterLevelDb
+    ] as [String : Any])
+  }
+
+  func sendPlayUpdateEvent(elapsedMs:Double, durationMs:Double, isMuted:Bool) {
+    sendEvent(withName: EVENT_ID_PLAY_UPDATE,
+      body: [
+        KEY_IS_MUTED: isMuted,
+        KEY_PLAY_ELAPSED_MS: elapsedMs,
+        KEY_PLAY_DURATION_MS: durationMs,
+      ] as [String: Any]
+    )
+  }
+
+  func createPlayStopResult(playStopCode: String) -> [String: Any] {
+    return [
+      KEY_PLAY_STOP_CODE: playStopCode,
+      audioFilePathKey: self.audioFileURL?.absoluteString ?? ""
+    ] as [String : Any]
+  }
+
+  func sendPlayStopEvent(playStopCode:String) {
+    sendEvent(withName: EVENT_ID_PLAY_STOP, 
+                  body: createPlayStopResult(playStopCode: playStopCode))
+  }
+
+    
   @objc(setSubscriptionDuration:)
   func setSubscriptionDuration(durationSec: Double) -> Void {
     let funcName = TAG + ".setSubscriptionDuration()"
@@ -191,8 +234,6 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
         return Int(kAudioFormatMPEGLayer1)
       case "mp2":
         return Int(kAudioFormatMPEGLayer2)
-
-
       case "amr":      
         return Int(kAudioFormatAMR) 
       case "opus":      
@@ -233,19 +274,6 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       default:
         return AVAudioSession.Mode.default
     }
-  }
-
- 
-  func sendRecStopEvent(recStopCode:String) {
-    sendEvent(withName: EVENT_ID_REC_STOP, body: [
-      KEY_REC_STOP_CODE: recStopCode
-    ] as [String : String])
-  }
-      
-  func sendPlayStopEvent(playStopCode:String) {
-    sendEvent(withName: EVENT_ID_PLAY_STOP, body: [
-      KEY_PLAY_STOP_CODE: playStopCode
-    ] as [String : String])
   }
 
 
@@ -498,15 +526,11 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       return resolve(funcName + "Recorder already stopped.")
     }
 
-    let status = [
-      KEY_REC_STOP_CODE: REC_STOP_CODE_REQUESTED,
-      audioFilePathKey: self.audioFileURL!.absoluteString
-    ] as [String : String];
-    sendEvent(withName: EVENT_ID_REC_STOP, body: status)
+    sendRecStopEvent(recStopCode:REC_STOP_CODE_REQUESTED)
       
     stopRecorder()
     
-    return resolve(status)
+    return resolve(createRecStopResult(recStopCode:REC_STOP_CODE_REQUESTED))
   }
   func stopRecorder() { // requested: Not due to error or timeout
     let funcName = TAG + ".stopRecorder()"
@@ -544,20 +568,21 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     if (audioRecorder == nil) {
       return
     }
-    var meterLevel: Float = 0
+    //audioRecorder is STILL not assumed to be non-nil below,
+    //because I've encountered a situation where it WASN'T.
+    //(Possibly due to asynchronous access? Not sure.)
+    var meterLevelDb: Float = 0
     if (self.recMeteringEnabled) {
-      audioRecorder.updateMeters()
-      meterLevel = audioRecorder.averagePower(forChannel: 0)
+      audioRecorder?.updateMeters()
+      meterLevelDb = audioRecorder?.averagePower(forChannel: 0) ?? 0.0
     }
-    let status = [
-      KEY_IS_RECORDING: audioRecorder.isRecording,
-      KEY_REC_ELAPSED_MS: audioRecorder.currentTime * 1000,
-      KEY_REC_METER_LEVEL: meterLevel,
-    ] as [String : Any];
-    sendEvent(withName: EVENT_ID_REC_UPDATE, body: status)
-    if (audioRecorder.currentTime >= self.maxRecDurationSec) {
-      let status = [ KEY_REC_STOP_CODE: REC_STOP_CODE_MAX_DURATION_REACHED ] as [String : String];
-      sendEvent(withName: EVENT_ID_REC_STOP, body: status)
+
+    sendRecUpdateEvent(elapsedMs: (audioRecorder?.currentTime ?? 0) * 1000, 
+                       isRecording: audioRecorder?.isRecording ?? false,
+                       meterLevelDb: meterLevelDb)
+
+    if ((audioRecorder?.currentTime ?? 0) >= self.maxRecDurationSec) {
+      sendRecStopEvent(recStopCode:REC_STOP_CODE_MAX_DURATION_REACHED)
       stopRecorder()
     }
   }
@@ -631,12 +656,10 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     addPeriodicTimeObserver() 
     
     audioPlayer.play()
-    
-    let status = [ 
+          
+    return resolve([
       audioFilePathKey: self.audioFileURL!.absoluteString
-    ] as [String : String];
-      
-    return resolve(status)
+    ] as [String : String])
   }
 
   @objc(pausePlayer:rejecter:)
@@ -686,9 +709,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     //Send stop event
     sendPlayStopEvent(playStopCode: PLAY_STOP_CODE_REQUESTED)
   
-    return resolve([ 
-      audioFilePathKey: self.audioFileURL!.absoluteString
-    ] as [String : String])
+    return resolve(createPlayStopResult(playStopCode:PLAY_STOP_CODE_REQUESTED))
   }
 
 
@@ -742,11 +763,9 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     let time = CMTime(seconds: self.subscriptionDurationSec, preferredTimescale: timeScale)
     timeObserverToken = audioPlayer.addPeriodicTimeObserver(forInterval: time, queue: .main) {_ in
       if (self.audioPlayer != nil) {
-        self.sendEvent(withName: self.EVENT_ID_PLAY_UPDATE, body: [
-          self.KEY_IS_MUTED: self.audioPlayer.isMuted,
-          self.KEY_PLAY_ELAPSED_MS: self.audioPlayerItem.currentTime().seconds * 1000,
-          self.KEY_PLAY_DURATION_MS: self.audioPlayerItem.asset.duration.seconds * 1000,
-        ])
+        self.sendPlayUpdateEvent(elapsedMs: (self.audioPlayerItem?.currentTime().seconds ?? 0) * 1000,
+                                 durationMs: (self.audioPlayerItem?.asset.duration.seconds ?? 1) * 1000,
+                                 isMuted: self.audioPlayer?.isMuted ?? false)
       }
     }
   }
