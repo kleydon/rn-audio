@@ -140,20 +140,21 @@ const recordingOptions:RecordingOptions = {
 
   //Shared
   audioFileNameOrPath: Platform.select({
-    //ios: 'recording.m4a',
-    ios: 'recording.wav',
-    //android: 'recording.mp4',
-    android: 'recording.wav',
+    ios: 'recording.m4a',
+    //ios: 'recording.wav',
+    android: 'recording.mp4',
+    //android: 'recording.wav',
   }),
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,
   sampleRate: 44100,
   numChannels: NumberOfChannelsId.ONE,
   lpcmByteDepth: ByteDepthId.TWO,
+  encoderBitRate: 128000,
 
   //Apple-specific
-  //appleAudioFormatId: AppleAudioFormatId.aac,
-  appleAudioFormatId: AppleAudioFormatId.lpcm,
+  appleAudioFormatId: AppleAudioFormatId.aac,
+  //appleAudioFormatId: AppleAudioFormatId.lpcm,
   appleAVAudioSessionModeId: AppleAVAudioSessionModeId.measurement,
   //Apple encoded/compressed-specific
   appleAVEncoderAudioQualityId: AppleAVEncoderAudioQualityId.high,
@@ -163,13 +164,13 @@ const recordingOptions:RecordingOptions = {
   appleAVLinearPCMIsNonInterleaved: false,
 
   //Android-specific
-  //androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
-  androidOutputFormatId: AndroidOutputFormatId.WAV,
-  //androidAudioEncoderId: AndroidAudioEncoderId.AAC,
-  androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
+  androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
+  //androidOutputFormatId: AndroidOutputFormatId.WAV,
+  androidAudioEncoderId: AndroidAudioEncoderId.AAC,
+  //androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
   androidAudioSourceId: AndroidAudioSourceId.MIC,
   //Android encoded/compressed-specific
-  androidAudioEncodingBitRate: 128000,
+  //(None)
 }
 
 

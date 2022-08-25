@@ -152,13 +152,13 @@ export interface RecordingOptions {
   maxRecDurationSec?: number,
   sampleRate?: number,
   numChannels?: NumberOfChannelsId,
+  encoderBitRate?: number,
   lpcmByteDepth?: ByteDepthId,
   
   //Apple-specific
   appleAudioFormatId?: AppleAudioFormatId,
   appleAVAudioSessionModeId?: AppleAVAudioSessionModeId,
   //Apple encoded/compressed-specific
-  appleAVEncoderBitRate?: number,
   appleAVEncoderAudioQualityId?: AppleAVEncoderAudioQualityId,
   //Apple LPCM/WAV-specific
   appleAVLinearPCMIsBigEndian?: boolean,
@@ -170,7 +170,7 @@ export interface RecordingOptions {
   androidOutputFormatId?: AndroidOutputFormatId,
   androidAudioEncoderId?: AndroidAudioEncoderId,
   //Android encoded/compressed-specific
-  androidAudioEncodingBitRate?: number
+  //(None)
 }
 
 enum EventId {
@@ -205,7 +205,7 @@ export type PlayStopMetadata = {
 export type RecUpdateMetadata = {
   isRecording: boolean,
   recElapsedMs: number,
-  recMeterLevel?: number,
+  recMeterLevelDb?: number,
 }
 
 export type PlayUpdateMetadata = {
