@@ -117,13 +117,9 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     NotificationCenter.default.removeObserver(self)
   }
 
-  //Is this way better?
-  // override static func requiresMainQueueSetup() -> Bool {
-  //   return true
-  // }
-  //From: https://gist.github.com/brennanMKE/1ebba84a0fd7c2e8b481e4f8a5349b99
-  @objc open override class func requiresMainQueueSetup() -> Bool {
-    return false
+
+  override static func requiresMainQueueSetup() -> Bool {
+    return false  // Which should it be, and why?
   }
 
 
@@ -411,10 +407,10 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       print("  avAudioRecorderRequestedSettings:", avAudioRecorderRequestedSettings)
       print("  ")
       print("  ")
-        
+      
       do {
         _audioRecorder = try AVAudioRecorder(url: _audioFilePathOrURL!, 
-                                settings: avAudioRecorderRequestedSettings)
+                                        settings: avAudioRecorderRequestedSettings)
         
         if (_audioRecorder == nil) {
           sendRecStopEvent(recStopCode: RecStopCode.Error)
@@ -664,6 +660,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     _audioPlayerAsset = AVURLAsset(url: _audioFilePathOrURL!, 
                                   options: ["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
     _audioPlayerItem = AVPlayerItem(asset: _audioPlayerAsset!)
+
     if (_audioPlayer == nil) {
       _audioPlayer = AVPlayer(playerItem: _audioPlayerItem)
     } 
@@ -673,6 +670,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     setPlayerVolume(volume: playbackVolume)
 
+    //Finished playing observer
     NotificationCenter.default.addObserver(
       self, 
       selector: #selector(self.audioPlayerDidFinishPlaying),
@@ -680,10 +678,43 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       object: nil
     )
 
+    //Abort observers
+    NotificationCenter.default.addObserver(
+      self, 
+      selector: #selector(self.abort),
+      name: NSNotification.Name.AVPlayerItemFailedToPlayToEndTime,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self, 
+      selector: #selector(self.abort),
+      name: NSNotification.Name.AVPlayerItemPlaybackStalled,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self, 
+      selector: #selector(self.abort),
+      name: NSNotification.Name.AVPlayerItemNewErrorLogEntry,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(self.abort),
+      name: AVAudioSession.interruptionNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(self.abort),
+      name: UIApplication.didEnterBackgroundNotification,
+      object: nil
+    )
+
+
     addPeriodicTimeObserver() 
     
     _audioPlayer.play()
-          
+      
     return resolve([
       Key.audioFileNameOrPath.rawValue: _audioFilePathOrURL!.absoluteString
     ] as [String : String])
@@ -774,10 +805,28 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     _audioPlayer?.volume = Float(volume)
   }
 
+    
+
+  @objc func abort(notification: NSNotification) {
+    let funcName = TAG + ".abort()"
+    print(funcName)
+    print("  Notification: ", notification)
+    if (_audioPlayer != nil) {
+      removePeriodicTimeObserver()
+      _audioPlayer = nil
+      sendPlayStopEvent(playStopCode:PlayStopCode.Error)
+    }
+    if (_audioRecorder != nil) {
+      _audioRecorder = nil
+      sendRecStopEvent(recStopCode:RecStopCode.Error)
+    }
+  }
+
 
   @objc func audioPlayerDidFinishPlaying(notification: NSNotification) {
     let funcName = TAG + ".audioPlayerDidFinishPlaying()"
     print(funcName)
+    removePeriodicTimeObserver()
     _audioPlayer = nil
     sendPlayStopEvent(playStopCode:PlayStopCode.MaxDurationReached)
   }
