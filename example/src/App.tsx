@@ -25,12 +25,13 @@ import {
   View,
 } from 'react-native'
 import React, {
-  Component
+  ReactElement,
+  useCallback,
+  useState,
 } from 'react'
-import Button from './components/Button'
-//import RNFetchBlob from 'rn-fetch-blob'
-import ReactNativeBlobUtil from 'react-native-blob-util'
 import to from 'await-to-js'
+//import ReactNativeBlobUtil from 'react-native-blob-util'  // For directory structure, file transfer, etc.
+import Button from './components/Button'
 
 const ilog = console.log
 const wlog = console.warn
@@ -66,7 +67,8 @@ const styles: any = StyleSheet.create({
     alignItems: 'center',
   },
   viewBarWrapper: {
-    marginTop: 28,
+    paddingTop: 28,
+    paddingBottom: 10,
     marginHorizontal: 28,
     alignSelf: 'stretch',
   },
@@ -117,19 +119,9 @@ const styles: any = StyleSheet.create({
   },
 })
 
-interface State {
-  isLoggingIn: boolean,
-  recordingElapsedMs: number,
-  recordingElapsedStr: string,
-  playbackElapsedMs: number,
-  playbackElapsedStr: string,
-  playbackDurationMs: number,
-  playbackDurationStr: string,
-}
-
 const screenWidth = Dimensions.get('screen').width
 
-const dirs = ReactNativeBlobUtil.fs.dirs
+//const dirs = ReactNativeBlobUtil.fs.dirs
 
 const audio = new Audio();
 audio.setSubscriptionDuration(0.15) // optional; default is (0.5)
@@ -169,118 +161,29 @@ const recordingOptions:RecordingOptions = {
   androidAudioEncoderId: AndroidAudioEncoderId.AAC,
   //androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
   androidAudioSourceId: AndroidAudioSourceId.MIC,
-  //Android encoded/compressed-specific
+  //Android WAV/LPCM specific
   //(None)
 }
 
 
-export default class App extends Component<any, State> {
+const DEFAULT_TIME_STR = '00:00:00'
 
-  constructor(props: any) {
-    super(props)
-    this.state = {
-      isLoggingIn: false,
-      recordingElapsedMs: 0,
-      recordingElapsedStr: '00:00:00',
-      playbackElapsedMs: 0,
-      playbackElapsedStr: '00:00:00',
-      playbackDurationMs: 0,
-      playbackDurationStr: '00:00:00',
-    }
+
+export default function App(): ReactElement {
+
+  const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number>(0)
+  const [playbackDurationMs, setPlaybackDurationMs] = useState<number>(0)
+
+  const [recordingElapsedStr, setRecordingElapsedStr] = useState<string>(DEFAULT_TIME_STR)
+  const [playbackElapsedStr, setPlaybackElapsedStr] = useState<string>(DEFAULT_TIME_STR)
+  const [playbackDurationStr, setPlaybackDurationStr] = useState<string>(DEFAULT_TIME_STR)
+
+  let playWidth = (playbackElapsedMs / playbackDurationMs) * (screenWidth - 56)
+  if (!playWidth) {
+    playWidth = 0
   }
 
-  public render() {
-
-    let playWidth =
-      (this.state.playbackElapsedMs / this.state.playbackDurationMs) *
-      (screenWidth - 56)
-    if (!playWidth) {
-      playWidth = 0
-    }
-
-    return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.titleTxt}>RnAudio Example</Text>
-        <Text style={styles.txtRecordCounter}>{this.state.recordingElapsedStr}</Text>
-        <View style={styles.viewButtonRow}>
-          <View style={styles.viewButtonSet}>
-            <Button
-              style={styles.btn}
-              onPress={this.onStartRecord}
-              txtStyle={styles.txt}
-            >
-              Record
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onPauseRecord}
-              txtStyle={styles.txt}
-            >
-              Pause
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onResumeRecord}
-              txtStyle={styles.txt}
-            >
-              Resume
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onStopRecord}
-              txtStyle={styles.txt}
-            >
-              Stop
-            </Button>
-          </View>
-        </View>
-        <View style={styles.viewPlayer}>
-          <TouchableOpacity
-            style={styles.viewBarWrapper}
-            onPress={this.onStatusPress}
-          >
-            <View style={styles.viewBar}>
-              <View style={[styles.viewBarPlay, {width: playWidth}]} />
-            </View>
-          </TouchableOpacity>
-          <Text style={styles.txtCounter}>
-            {this.state.playbackElapsedStr} / {this.state.playbackDurationStr}
-          </Text>
-          <View style={styles.playBtnWrapper}>
-            <Button
-              style={styles.btn}
-              onPress={this.onStartPlay}
-              txtStyle={styles.txt}
-            >
-              Play
-            </Button>
-            <Button style={styles.btn}
-              onPress={this.onPausePlay}
-              txtStyle={styles.txt}
-            >
-              Pause
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onResumePlay}
-              txtStyle={styles.txt}
-            >
-              Resume
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onStopPlay}
-              txtStyle={styles.txt}
-            >
-              Stop
-            </Button> 
-          </View>
-        </View>
-      </SafeAreaView>
-    )
-  }
-
-  private async ifAndroidEnsurePermissionsSecured():Promise<boolean> {
+  const ifAndroidEnsurePermissionsSecured = useCallback(async ():Promise<boolean> => {
     const funcName = 'app.ifAndroidEnsurePermissionsSecured()'
     ilog(funcName)
     if (Platform.OS === 'android') {
@@ -310,32 +213,14 @@ export default class App extends Component<any, State> {
       }
     }
     return true
-  }
+  }, [])
 
-  private onStatusPress = (e: any):void => {
-    const funcName = 'app.onStatusPress()'
-    ilog(funcName)
-    const touchX = e.nativeEvent.locationX
-    const playWidth =
-      (this.state.playbackElapsedMs / this.state.playbackDurationMs) *
-      (screenWidth - 56)
-    const playbackElapsedMs = Math.round(this.state.playbackElapsedMs)
-    if (playWidth && playWidth < touchX) {
-      const addSecs = Math.round(playbackElapsedMs + 1000)
-      audio.seekToPlayer(addSecs)
-      ilog(funcName + ` - addSecs: ${addSecs}`)
-    } 
-    else {
-      const subSecs = Math.round(playbackElapsedMs - 1000)
-      audio.seekToPlayer(subSecs)
-      ilog(funcName + `- subSecs: ${subSecs}`)
-    }
-  }
 
-  private onStartRecord = async ():Promise<undefined> => {
+  
+  const onStartRecord = useCallback(async ():Promise<undefined> => {
     const funcName = 'app.onStartRecord()'
     ilog(funcName)
-    if (await this.ifAndroidEnsurePermissionsSecured() !== true) {
+    if (await ifAndroidEnsurePermissionsSecured() !== true) {
       const errStr = funcName + ' - Android permissions not secured'
       elog(errStr)
       return Promise.reject(errStr)
@@ -343,16 +228,13 @@ export default class App extends Component<any, State> {
     ilog(funcName + ' - recordingOptions: ', recordingOptions)
     const recUpdateCallback = (e: RecUpdateMetadata) => {
       ilog('app.recUpdateCallback() - metadata: ', e)
-      this.setState({
-        recordingElapsedMs: e.recElapsedMs,
-        recordingElapsedStr: audio.mmssss(
-          Math.floor(e.recElapsedMs),
-        ),
-      })
+      setRecordingElapsedStr(audio.mmssss(
+        Math.floor(e.recElapsedMs),
+      ))
     }
     const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
       ilog('app.recStopCallback() - metadata:', e)
-      const [err,] = await to<undefined>(this.onStopRecord())
+      const [err,] = await to<void>(onStopRecord())
       if (err) {
         const errStr = 'In recStopCallback - error calling onStopRecord(): ' + e
         elog(errStr)
@@ -372,9 +254,10 @@ export default class App extends Component<any, State> {
     }
     ilog(funcName + ' - Result:', res)
     return
-  }
+  }, [])
 
-  private onPauseRecord = async ():Promise<undefined> => {
+
+  const onPauseRecord = useCallback(async ():Promise<void> => {
     ilog('app.onPauseRecord()')
     const [err, res] = await to<string>(audio.pauseRecorder())
     if (err) {
@@ -384,9 +267,10 @@ export default class App extends Component<any, State> {
     }
     ilog('app.onPauseRecord() - Result:',  res)
     return
-  }
+  }, [])
 
-  private onResumeRecord = async ():Promise<undefined> => {
+
+  const onResumeRecord = useCallback(async ():Promise<void> => {
     const funcName = 'app.onResumeRecord()'
     ilog(funcName)
     const [err, res] = await to<string>(audio.resumeRecorder())
@@ -397,9 +281,10 @@ export default class App extends Component<any, State> {
     }
     ilog(funcName + ' - Result: ',  res)
     return
-  }
+  }, [])
 
-  private onStopRecord = async ():Promise<undefined> => {
+
+  const onStopRecord = useCallback(async ():Promise<void> => {
     const funcName = 'app.onStopRecord()'
     ilog(funcName)
     const [err, res] = await to<object|string>(audio.stopRecorder())
@@ -408,26 +293,24 @@ export default class App extends Component<any, State> {
       elog(errMsg)
       return
     }
-    this.setState({ recordingElapsedMs: 0 })
     ilog(funcName + ' - Result: ', res)
     return
-  }
+  }, [])
 
-  private onStartPlay = async ():Promise<undefined> => {
+
+  const onStartPlay = useCallback(async ():Promise<void> => {
     const funcName = 'app.onStartPlay()'
     ilog(funcName)
     const playUpdateCallback = (e: PlayUpdateMetadata) => {
       ilog('app.playUpdateEventCallback() - metadata: ', e)
-      this.setState({
-        playbackElapsedMs: e.playElapsedMs,
-        playbackElapsedStr: audio.mmssss(Math.floor(e.playElapsedMs)),
-        playbackDurationMs: e.playDurationMs,
-        playbackDurationStr: audio.mmssss(Math.floor(e.playDurationMs)),
-      })
+      setPlaybackElapsedMs(e.playElapsedMs)
+      setPlaybackElapsedStr(audio.mmssss(Math.floor(e.playElapsedMs)))
+      setPlaybackDurationMs(e.playDurationMs)
+      setPlaybackDurationStr(audio.mmssss(Math.floor(e.playDurationMs)))
     }
-    const playStopCallback = async (e: PlayStopMetadata):Promise<undefined> => {
+    const playStopCallback = async (e: PlayStopMetadata):Promise<void> => {
       ilog('app.playStopCallback() - metadata:', e)
-      const [err,] = await to<string|undefined>(this.onStopPlay())
+      const [err,] = await to<void>(onStopPlay())
       if (err) {
         const errStr = 'In playStopCallback - error calling app.onStopPlay(): ' + e
         elog(errStr)
@@ -435,7 +318,7 @@ export default class App extends Component<any, State> {
       }
       return
     }
-    const [err, res] = await to<object|string>(audio.startPlayer({
+    const [err, res] = await to<string>(audio.startPlayer({
       fileNameOrPathOrURL: recordingOptions.audioFileNameOrPath,
       playUpdateCallback,
       playStopCallback,
@@ -448,9 +331,10 @@ export default class App extends Component<any, State> {
     }
     ilog(funcName + ' - Result: ',  res)
     return
-  }
+  }, [playbackElapsedMs, playbackDurationMs])
 
-  private onPausePlay = async () => {
+
+  const onPausePlay = useCallback(async ():Promise<void> => {
     const funcName = 'app.onPausePlay()'
     ilog(funcName)
     const [err, res] = await to<string>(audio.pausePlayer())
@@ -460,10 +344,11 @@ export default class App extends Component<any, State> {
       return
     }
     ilog(funcName + ' - Result: ', res)
-    return res
-  }
+    return
+  }, [])
 
-  private onResumePlay = async () => {
+
+  const onResumePlay = useCallback(async ():Promise<void> => {
     const funcName = 'app.onResumePlay()'
     ilog(funcName)
     const [err, res] = await to<string>(audio.resumePlayer())
@@ -473,16 +358,15 @@ export default class App extends Component<any, State> {
       return
     }
     ilog(funcName + ' - Result: ', res)
-    return res
-  }
+    return
+  }, [])
 
-  private onStopPlay = async () => {
+
+  const onStopPlay = useCallback(async ():Promise<void> => {
     const funcName = 'app.onStopPlay()'
     ilog(funcName)
-    this.setState({
-      playbackElapsedMs: 0,
-      playbackElapsedStr: audio.mmssss(0)
-    })
+    setPlaybackElapsedMs(0)
+    setPlaybackElapsedStr(audio.mmssss(0))
     const [err, res] = await to<string>(audio.stopPlayer())
     if (err) {
       const errStr = funcName + ': ' + err
@@ -490,7 +374,109 @@ export default class App extends Component<any, State> {
       return
     }
     ilog('app.onStopPlay() - Result: ', res)
-    return res  
-  }
+    return
+  }, [])
 
+
+  const onStatusPress = useCallback(async (e: any):Promise<void> => {
+    const funcName = 'app.onStatusPress()'
+    ilog(funcName)
+    const touchX = e.nativeEvent.locationX
+    const playWidth =
+      (playbackElapsedMs / playbackDurationMs) *
+      (screenWidth - 56)
+    const pbElapsedMs = Math.round(playbackElapsedMs)
+    if (playWidth && playWidth < touchX) {
+      const addSecs = Math.round(pbElapsedMs + 1000)
+      audio.seekToPlayer(addSecs)
+      ilog(funcName + ` - addSecs: ${addSecs}`)
+    } 
+    else {
+      const subSecs = Math.round(pbElapsedMs - 1000)
+      audio.seekToPlayer(subSecs)
+      ilog(funcName + `- subSecs: ${subSecs}`)
+    }
+  }, [playbackElapsedMs, playbackDurationMs])
+
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.titleTxt}>RnAudio Example</Text>
+      <Text style={styles.txtRecordCounter}>{recordingElapsedStr}</Text>
+      <View style={styles.viewButtonRow}>
+        <View style={styles.viewButtonSet}>
+          <Button
+            style={styles.btn}
+            onPress={onStartRecord}
+            txtStyle={styles.txt}
+          >
+            Record
+          </Button>
+          <Button
+            style={styles.btn}
+            onPress={onPauseRecord}
+            txtStyle={styles.txt}
+          >
+            Pause
+          </Button>
+          <Button
+            style={styles.btn}
+            onPress={onResumeRecord}
+            txtStyle={styles.txt}
+          >
+            Resume
+          </Button>
+          <Button
+            style={styles.btn}
+            onPress={onStopRecord}
+            txtStyle={styles.txt}
+          >
+            Stop
+          </Button>
+        </View>
+      </View>
+      <View style={styles.viewPlayer}>
+        <TouchableOpacity
+          style={styles.viewBarWrapper}
+          onPress={onStatusPress}
+        >
+          <View style={styles.viewBar}>
+            <View style={[styles.viewBarPlay, {width: playWidth}]} />
+          </View>
+        </TouchableOpacity>
+        <Text style={styles.txtCounter}>
+          {playbackElapsedStr} / {playbackDurationStr}
+        </Text>
+        <View style={styles.playBtnWrapper}>
+          <Button
+            style={styles.btn}
+            onPress={onStartPlay}
+            txtStyle={styles.txt}
+          >
+            Play
+          </Button>
+          <Button style={styles.btn}
+            onPress={onPausePlay}
+            txtStyle={styles.txt}
+          >
+            Pause
+          </Button>
+          <Button
+            style={styles.btn}
+            onPress={onResumePlay}
+            txtStyle={styles.txt}
+          >
+            Resume
+          </Button>
+          <Button
+            style={styles.btn}
+            onPress={onStopPlay}
+            txtStyle={styles.txt}
+          >
+            Stop
+          </Button> 
+        </View>
+      </View>
+    </SafeAreaView>
+  )
 }

@@ -701,7 +701,7 @@ export class Audio {
     const funcName = 'index.stopRecorder()'
     ilog(funcName)
     //NOTE: Callbacks get removed when recStopCallback fires; see addRecStopCallback
-    const [err, res] = await to<object>(RnAudio.stopRecorder())
+    const [err, res] = await to<object|string>(RnAudio.stopRecorder())
     if (err) {
       const errStr = funcName + ' - ' + err
       elog(errStr)
@@ -789,6 +789,7 @@ export class Audio {
     const funcName = 'index.pausePlayer()'
     ilog(funcName)
     const playerState = await this.getPlayerState()
+    ilog('  playerState: ' + playerState)
     if (playerState !== PlayerState.Playing) {
       return funcName + ' - No need to pause; player ' +
         ((playerState === PlayerState.Stopped) ? 'isn\'t running' : 'is already paused')
@@ -858,6 +859,11 @@ export class Audio {
   seekToPlayer = async (time: number): Promise<string> => {
     const funcName = 'index.seekToPlayer()'
     ilog(funcName)
+    const playerState = await this.getPlayerState()
+    ilog(funcName + ' - playerState: ' + playerState)
+    if (playerState === PlayerState.Stopped) {
+      Promise.resolve(funcName + ' - Can\'t seek; player isn\'t playing')      
+    }
     const [err, res] = await to<string>(RnAudio.seekToPlayer(time))
     if (err) {
       const errStr = funcName + ' - ' + err
