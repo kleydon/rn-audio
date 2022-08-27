@@ -173,20 +173,20 @@ export interface RecordingOptions {
   //(None)
 }
 
-enum EventId {
+export enum EventId {
   RecStop = "RecStop",
   PlayStop = "PlayStop",
   RecUpdate = "RecUpdate",
   PlayUpdate = "PlayUpdate",
 }
 
-enum RecStopCode {
+export enum RecStopCode {
   Requested = "Requested",  // By user or app; not due to error or timeout
   MaxDurationReached = "MaxDurationReached",
   Error = "Error",
 }
 
-enum PlayStopCode {
+export enum PlayStopCode {
   Requested = "Requested",  // By user or app; not due to error or timeout
   MaxDurationReached = "MaxDurationReached",
   Error = "Error",
