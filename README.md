@@ -2,7 +2,11 @@
 
 React-native module for recording and playing audio files on `iOS` and `android`, using platform-supported formats and options (as well as .wav support). This module can additionally play audio files from a URL.
 
+## Compatibility:
 
+* React Native >= 0.61
+* iOS: >= 11.0
+* Android SDK: >= 21
 
 ## Installation:
 
@@ -25,7 +29,7 @@ You need to add a usage description to Info.plist:
 <key>NSMicrophoneUsageDescription</key>
 <string>$(PRODUCT_NAME) requires your permission to use the microphone.</string>
 ```
-Also, [add a swift bridging header](https://javedmultani16.medium.com/adding-a-swift-bridging-header-b6b0a7ab895f) (if you don't have one already), for swift compatibility.
+Also, add a swift bridging header (if you don't have one already), for swift compatibility; see [here](https://javedmultani16.medium.com/adding-a-swift-bridging-header-b6b0a7ab895f) and [here](https://stackoverflow.com/questions/31716413/xcode-not-automatically-creating-bridging-header).
 
 #### Android
 
@@ -115,7 +119,7 @@ audio.mmss(secs)  // Returns MM:SS formatted time string
 audio.mmssss(ms)  // Returns a MM:SS:mm formatted time string
 ```
 
-For specifying directories, transferring recordings, dealing with file data, etc, consider using:
+For specifying directory paths, file system navigation, transferring recordings, dealing with file data, etc, consider using:
 
 * [react-native-blob-util](https://www.npmjs.com/package/react-native-blob-util)
 * [react-native-fs](https://www.npmjs.com/package/react-native-fs)
