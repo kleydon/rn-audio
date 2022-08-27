@@ -42,6 +42,8 @@ MIT
 ## Dev Notes
 
 Based on 
+  react-native-audio-recorder-player
+  Based on [react-native-audio-record](https://github.com/goodatlas/react-native-audio-record), by [Atlas Labs](https://github.com/goodatlas)
 
 Skeleton set-up:
 

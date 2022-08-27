@@ -1,294 +1,139 @@
 import {
   Audio,
-  AVEncoderAudioQualityIOSType,
-  AVEncodingOption,
-  AudioEncoderAndroidType,
-  AudioSet,
-  AudioSourceAndroidType,
-  PlayBackType,
-  RecordBackType,
-  StoppageType,
+  RecordingOptions,
+  AppleAVEncoderAudioQualityId,
+  AppleAudioFormatId,
+  AppleAVAudioSessionModeId,
+  AndroidAudioSourceId,
+  AndroidAudioEncoderId,
+  RecUpdateMetadata,
+  RecStopMetadata,
+  PlayUpdateMetadata,
+  PlayStopMetadata,
+  AndroidOutputFormatId,
+  NumberOfChannelsId,
+  ByteDepthId,
 } from 'rn-audio'
 import {
+  AppState,
   Dimensions,
   PermissionsAndroid,
   Platform,
   SafeAreaView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native'
 import React, {
-  Component
+  ReactElement,
+  useCallback,
+  useState,
+  useEffect,
+  useRef,
 } from 'react'
-import Button from './components/Button'
-import RNFetchBlob from 'rn-fetch-blob'
+import to from 'await-to-js'
+//import ReactNativeBlobUtil from 'react-native-blob-util'  // For directory structure, file transfer, etc.
+import { Button } from './components/Button'
+import { ss } from './styles/styleSheet'
 
 const ilog = console.log
 const wlog = console.warn
 const elog = console.error
 
-const styles: any = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#455A64',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'flex-start'
-  },
-  titleTxt: {
-    marginTop: 100,
-    color: 'white',
-    fontSize: 28,
-  },
-  viewButtonRow: {
-    marginTop: 20,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-  },
-  viewButtonSet: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  viewPlayer: {
-    marginTop: 40,
-    alignSelf: 'stretch',
-    alignItems: 'center',
-  },
-  viewBarWrapper: {
-    marginTop: 28,
-    marginHorizontal: 28,
-    alignSelf: 'stretch',
-  },
-  viewBar: {
-    backgroundColor: '#ccc',
-    height: 4,
-    alignSelf: 'stretch',
-  },
-  viewBarPlay: {
-    backgroundColor: 'white',
-    height: 4,
-    width: 0,
-  },
-  playStatusTxt: {
-    marginTop: 8,
-    color: '#ccc',
-  },
-  playBtnWrapper: {
-    flexDirection: 'row',
-    marginTop: 40,
-  },
-  btn: {
-    margin: 5,
-  },
-  txt: {
-    color: 'white',
-    fontSize: 14,
-    marginHorizontal: 8,
-    marginVertical: 4,
-  },
-  txtRecordCounter: {
-    marginTop: 32,
-    color: 'white',
-    fontSize: 20,
-    textAlignVertical: 'center',
-    fontWeight: '200',
-    fontFamily: 'Helvetica Neue',
-    letterSpacing: 3,
-  },
-  txtCounter: {
-    marginTop: 12,
-    color: 'white',
-    fontSize: 20,
-    textAlignVertical: 'center',
-    fontWeight: '200',
-    fontFamily: 'Helvetica Neue',
-    letterSpacing: 3,
-  },
-})
 
-interface State {
-  isLoggingIn: boolean,
-  recordSecs: number,
-  recordTime: string,
-  currentPositionSec: number,
-  currentDurationSec: number,
-  playTime: string,
-  duration: string,
-  result: number
+const recordingOptions:RecordingOptions = {
+  
+  //audioFileNameOrPath: 'https://download.samplelib.com/wav/sample-3s.wav'
+
+  //Shared
+  audioFileNameOrPath: Platform.select({
+    ios: 'recording.m4a',
+    //ios: 'recording.wav',
+    android: 'recording.mp4',
+    //android: 'recording.wav',
+  }),
+  recMeteringEnabled: true,
+  maxRecDurationSec: 10.0,
+  sampleRate: 44100,
+  numChannels: NumberOfChannelsId.ONE,
+  lpcmByteDepth: ByteDepthId.TWO,
+  encoderBitRate: 128000,
+
+  //Apple-specific
+  appleAudioFormatId: AppleAudioFormatId.aac,
+  //appleAudioFormatId: AppleAudioFormatId.lpcm,
+  appleAVAudioSessionModeId: AppleAVAudioSessionModeId.measurement,
+  //Apple encoded/compressed-specific
+  appleAVEncoderAudioQualityId: AppleAVEncoderAudioQualityId.high,
+  //Apple WAV/LPCM specific
+  appleAVLinearPCMIsBigEndian: false,
+  appleAVLinearPCMIsFloatKeyIOS: false,
+  appleAVLinearPCMIsNonInterleaved: false,
+
+  //Android-specific
+  androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
+  //androidOutputFormatId: AndroidOutputFormatId.WAV,
+  androidAudioEncoderId: AndroidAudioEncoderId.AAC,
+  //androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
+  androidAudioSourceId: AndroidAudioSourceId.MIC,
+  //Android WAV/LPCM specific
+  //(None)
 }
 
+
+const DEFAULT_TIME_STR = '00:00:00'
+
 const screenWidth = Dimensions.get('screen').width
+ilog('screenWidth: ', screenWidth)
+
+//const dirs = ReactNativeBlobUtil.fs.dirs
+
+const audio = new Audio();
+audio.setSubscriptionDuration(0.25) // optional; default is (0.5)
 
 
-export default class App extends Component<any, State> {
+export default function App(): ReactElement {
 
-  private dirs = RNFetchBlob.fs.dirs
-  private path = Platform.select({
-//    ios: 'hello.m4a',
-    //   ios: 'hello.wav',
-//    ios: `${this.dirs.CacheDir}/recording.wav`,
-    ios: `recording.wav`,
-//    android: `${this.dirs.CacheDir}/hello.mp4`,
-    android: `${this.dirs.CacheDir}/recording.wav`,
-  })
-
-  private audio: Audio
-
-  constructor(props: any) {
-    super(props)
-    this.state = {
-      isLoggingIn: false,
-      recordSecs: 0,
-      recordTime: '00:00:00',
-      currentPositionSec: 0,
-      currentDurationSec: 0,
-      playTime: '00:00:00',
-      duration: '00:00:00',
-      result: 0
+  // Without appState listening (below):
+  // * android continues playing in the bg
+  // * iOS pauses recording/playback audio for backgrounded app, 
+  //   then brings it back when app is foregrounded again
+  const appState = useRef(AppState.currentState)
+  useEffect(() => {
+    const subscription = 
+      AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/active/) &&
+          nextAppState.match(/inactive|background/)) {
+        console.log('app.appStateEventListener() - App left foreground; stopping any playing/recording')
+        onStopRecord()
+        onStopPlay()
+      }
+      appState.current = nextAppState
+    })
+    return () => {
+      subscription.remove()
     }
+  }, [])
 
-    this.audio = new Audio()
-    this.audio.setSubscriptionDuration(0.1) // optional. Default is 0.5
+
+  const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number>(0)
+  const [playbackDurationMs, setPlaybackDurationMs] = useState<number>(0)
+
+  const [recordingElapsedStr, setRecordingElapsedStr] = useState<string>(DEFAULT_TIME_STR)
+  const [playbackElapsedStr, setPlaybackElapsedStr] = useState<string>(DEFAULT_TIME_STR)
+  const [playbackDurationStr, setPlaybackDurationStr] = useState<string>(DEFAULT_TIME_STR)
+
+  let playWidth = (playbackElapsedMs / playbackDurationMs) * (screenWidth - 56)
+  if (Number.isFinite(playWidth)==false || Number.isNaN(playWidth) ) {
+    playWidth = 0
   }
+  ilog('playWidth:'+ playWidth) 
 
-  public render() {
 
-    let playWidth =
-      (this.state.currentPositionSec / this.state.currentDurationSec) *
-      (screenWidth - 56)
-    if (!playWidth) {
-      playWidth = 0
-    }
-
-    return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.titleTxt}>RnAudio Example</Text>
-        <Text style={styles.txtRecordCounter}>{this.state.recordTime}</Text>
-        <Text style={styles.txtRecordCounter}>{this.state.result}</Text>
-        <View style={styles.viewButtonRow}>
-          <View style={styles.viewButtonSet}>
-              <Button
-                style={styles.btn}
-                onPress={this.onStartWavRecord}
-                txtStyle={styles.txt}
-              >
-                wavRec
-              </Button>
-
-              <Button
-                style={styles.btn}
-                onPress={this.onPauseWavRecord}
-                txtStyle={styles.txt}
-              >
-                wavPause
-              </Button>
-
-              <Button
-                style={styles.btn}
-                onPress={this.onResumeWavRecord}
-                txtStyle={styles.txt}
-              >
-                wavResume
-              </Button>
-
-              <Button
-                style={styles.btn}
-                onPress={this.onStopWavRecord}
-                txtStyle={styles.txt}
-              >
-                wavStop
-              </Button>
-          </View>
-        </View>
-        <View style={styles.viewButtonRow}>
-          <View style={styles.viewButtonSet}>
-            <Button
-              style={styles.btn}
-              onPress={this.onStartRecord}
-              txtStyle={styles.txt}
-            >
-              Record
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onPauseRecord}
-              txtStyle={styles.txt}
-            >
-              Pause
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onResumeRecord}
-              txtStyle={styles.txt}
-            >
-              Resume
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onStopRecord}
-              txtStyle={styles.txt}
-            >
-              Stop
-            </Button>
-          </View>
-        </View>
-        <View style={styles.viewPlayer}>
-          <TouchableOpacity
-            style={styles.viewBarWrapper}
-            onPress={this.onStatusPress}
-          >
-            <View style={styles.viewBar}>
-              <View style={[styles.viewBarPlay, {width: playWidth}]} />
-            </View>
-          </TouchableOpacity>
-          <Text style={styles.txtCounter}>
-            {this.state.playTime} / {this.state.duration}
-          </Text>
-          <View style={styles.playBtnWrapper}>
-            <Button
-              style={styles.btn}
-              onPress={this.onStartPlay}
-              txtStyle={styles.txt}
-            >
-              Play
-            </Button>
-            <Button style={styles.btn}
-              onPress={this.onPausePlay}
-              txtStyle={styles.txt}
-            >
-              Pause
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onResumePlay}
-              txtStyle={styles.txt}
-            >
-              Resume
-            </Button>
-            <Button
-              style={styles.btn}
-              onPress={this.onStopPlay}
-              txtStyle={styles.txt}
-            >
-              Stop
-            </Button> 
-          </View>
-        </View>
-      </SafeAreaView>
-    )
-  }
-
-  private async ifAndroidEnsurePermissionsSecured() {
+  const ifAndroidEnsurePermissionsSecured = useCallback(async ():Promise<boolean> => {
+    const funcName = 'app.ifAndroidEnsurePermissionsSecured()'
+    ilog(funcName)
     if (Platform.OS === 'android') {
-      ilog([
-        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
-        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE!,
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO!,
-      ])
       try {
         const grants = await PermissionsAndroid.requestMultiple([
           PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
@@ -306,7 +151,7 @@ export default class App extends Component<any, State> {
           return true
         } 
         else {
-          wlog('Required android permissions NOT granted')
+          wlog(funcName + ' - Required android permissions NOT granted')
           return false
         }
       } catch (err) {
@@ -315,216 +160,265 @@ export default class App extends Component<any, State> {
       }
     }
     return true
-  }
+  }, [])
 
-  private onStatusPress = (e: any) => {
+  // RECORDING
+  
+  const onStartRecord = useCallback(async ():Promise<undefined> => {
+    const funcName = 'app.onStartRecord()'
+    ilog(funcName)
+    if (await ifAndroidEnsurePermissionsSecured() !== true) {
+      const errStr = funcName + ' - Android permissions not secured'
+      elog(errStr)
+      return Promise.reject(errStr)
+    }
+    ilog(funcName + ' - recordingOptions: ', recordingOptions)
+    const recUpdateCallback = async (e: RecUpdateMetadata) => {
+      ilog('app.recUpdateCallback() - metadata: ', e)
+      setRecordingElapsedStr(audio.mmssss(
+        Math.floor(e.recElapsedMs),
+      ))
+    }
+    const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
+      ilog('app.recStopCallback() - metadata:', e)
+      const [err,] = await to<void>(onStopRecord())
+      if (err) {
+        const errStr = 'In recStopCallback - error calling onStopRecord(): ' + e
+        elog(errStr)
+        return
+      }
+      return
+    }
+    const [err, res] = await to<object|string>(audio.startRecorder({
+      recordingOptions,
+      recUpdateCallback,
+      recStopCallback
+    }))
+    if (err) {
+      const errMsg = funcName + ' - Error:' + err
+      elog(errMsg)
+      return
+    }
+    ilog(funcName + ' - Result:', res)
+    return
+  }, [])
+
+
+  const onPauseRecord = useCallback(async ():Promise<void> => {
+    ilog('app.onPauseRecord()')
+    const [err, res] = await to<string>(audio.pauseRecorder())
+    if (err) {
+      const errMsg = 'onPauseRecord() - Error: ' + err
+      elog(errMsg)
+      return
+    }
+    ilog('app.onPauseRecord() - Result:',  res)
+    return
+  }, [])
+
+
+  const onResumeRecord = useCallback(async ():Promise<void> => {
+    const funcName = 'app.onResumeRecord()'
+    ilog(funcName)
+    const [err, res] = await to<string>(audio.resumeRecorder())
+    if (err) {
+      const errMsg = funcName + ' - Error: ' + err
+      elog(errMsg)
+      return
+    }
+    ilog(funcName + ' - Result: ',  res)
+    return
+  }, [])
+
+
+  const onStopRecord = useCallback(async ():Promise<void> => {
+    const funcName = 'app.onStopRecord()'
+    ilog(funcName)
+    const [err, res] = await to<object|string>(audio.stopRecorder())
+    if (err) {
+      const errMsg = funcName + ' - Error: ' + err
+      elog(errMsg)
+      return
+    }
+    ilog(funcName + ' - Result: ', res)
+    return
+  }, [])
+
+
+  // PLAYBACK
+
+
+  const onStartPlay = useCallback(async ():Promise<void> => {
+    const funcName = 'app.onStartPlay()'
+    ilog(funcName)
+    const playUpdateCallback = (e: PlayUpdateMetadata) => {
+      ilog('app.playUpdateEventCallback() - metadata: ', e)
+      setPlaybackElapsedMs(e.playElapsedMs)
+      setPlaybackElapsedStr(audio.mmssss(Math.floor(e.playElapsedMs)))
+      setPlaybackDurationMs(e.playDurationMs)
+      setPlaybackDurationStr(audio.mmssss(Math.floor(e.playDurationMs)))
+    }
+    const playStopCallback = async (e: PlayStopMetadata):Promise<void> => {
+      ilog('app.playStopCallback() - metadata:', e)
+      const [err,] = await to<void>(onStopPlay())
+      if (err) {
+        const errStr = 'In playStopCallback - error calling app.onStopPlay(): ' + e
+        elog(errStr)
+        return
+      }
+      return
+    }
+    const [err, res] = await to<string>(audio.startPlayer({
+      fileNameOrPathOrURL: recordingOptions.audioFileNameOrPath,
+      playUpdateCallback,
+      playStopCallback,
+      playVolume: 1.0,
+    }))
+    if (err) {
+      const errStr = funcName + ': ' + err
+      elog(errStr)
+      return
+    }
+    ilog(funcName + ' - Result: ',  res)
+    return
+  }, [playbackElapsedMs, playbackDurationMs])
+
+
+  const onPausePlay = useCallback(async ():Promise<void> => {
+    const funcName = 'app.onPausePlay()'
+    ilog(funcName)
+    const [err, res] = await to<string>(audio.pausePlayer())
+    if (err) {
+      const errStr = funcName + ': ' + err
+      elog(errStr)
+      return
+    }
+    ilog(funcName + ' - Result: ', res)
+    return
+  }, [])
+
+
+  const onResumePlay = useCallback(async ():Promise<void> => {
+    const funcName = 'app.onResumePlay()'
+    ilog(funcName)
+    const [err, res] = await to<string>(audio.resumePlayer())
+    if (err) {
+      const errStr = funcName + ': ' + err
+      elog(errStr)
+      return
+    }
+    ilog(funcName + ' - Result: ', res)
+    return
+  }, [])
+
+
+  const onStopPlay = useCallback(async ():Promise<void> => {
+    const funcName = 'app.onStopPlay()'
+    ilog(funcName)
+    setPlaybackElapsedMs(0)
+    setPlaybackElapsedStr(audio.mmssss(0))
+    const [err, res] = await to<string>(audio.stopPlayer())
+    if (err) {
+      const errStr = funcName + ': ' + err
+      elog(errStr)
+      return
+    }
+    ilog('app.onStopPlay() - Result: ', res)
+    return
+  }, [])
+
+
+  const onStatusPress = useCallback(async (e: any):Promise<void> => {
+    const funcName = 'app.onStatusPress()'
+    ilog(funcName)
     const touchX = e.nativeEvent.locationX
-    ilog(`touchX: ${touchX}`)
-    const playWidth =
-      (this.state.currentPositionSec / this.state.currentDurationSec) *
-      (screenWidth - 56)
-    ilog(`currentPlayWidth: ${playWidth}`)
+    const newFractionPlayed = touchX / (screenWidth - 2*ss.viewBarWrapper.marginHorizontal)
+    ilog(funcName + ` - touchX: ${touchX}`)
+    ilog(funcName + ` - newFractionPlayed: ${newFractionPlayed}`)
+    audio.seekToPlayer(Math.round(newFractionPlayed*playbackDurationMs))
+  }, [playbackElapsedMs, playbackDurationMs])
 
-    const currentPosition = Math.round(this.state.currentPositionSec)
 
-    if (playWidth && playWidth < touchX) {
-      const addSecs = Math.round(currentPosition + 1000)
-      this.audio.seekToPlayer(addSecs)
-      ilog(`addSecs: ${addSecs}`)
-    } else {
-      const subSecs = Math.round(currentPosition - 1000)
-      this.audio.seekToPlayer(subSecs)
-      ilog(`subSecs: ${subSecs}`)
-    }
-  }
+  //RENDERING
 
-  private onStartRecord = async () => {
-    
-    ilog('onStartRecord()')
-
-    if (await this.ifAndroidEnsurePermissionsSecured() === false) {
-      return
-    }
-
-    const audioSet: AudioSet = {
-      AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
-      AudioSourceAndroid: AudioSourceAndroidType.MIC,
-      AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
-      AVNumberOfChannelsKeyIOS: 2,
-//      AVFormatIDKeyIOS: AVEncodingOption.aac,
-      AVFormatIDKeyIOS: AVEncodingOption.lpcm,
-    }
-
-    ilog('audioSet:', audioSet)
-
-    const recordingCallback = (e: RecordBackType) => {
-      ilog('record-back', e)
-      this.setState({
-        recordSecs: e.currentPosition,
-        recordTime: this.audio.mmssss(
-          Math.floor(e.currentPosition),
-        ),
-      })
-    }
-
-    const stoppageCallback = (e: StoppageType) => {
-      ilog('stoppage', e)
-      this.onStopRecord()
-    }
-
-    ilog(   'calling arp.startRecorder()')
-    const uri = await this.audio.startRecorder({
-      audioSet,
-      uri: this.path,
-      meteringEnabled: true, //metering enabled
-      maxRecordingDurationSec: 5.0,
-      recordingCallback,
-      stoppageCallback
-    })
-
-    ilog(`uri: ${uri}`)
-  }
-
-  private onPauseRecord = async () => {
-    try {
-      const r = await this.audio.pauseRecorder()
-      ilog(r)
-    } catch (err) {
-      elog('pauseRecord', err)
-    }
-  }
-
-  private onResumeRecord = async () => {
-    await this.audio.resumeRecorder()
-  }
-
-  private onStopRecord = async () => {
-    const result = await this.audio.stopRecorder()
-    this.setState({
-      recordSecs: 0,
-    })
-    ilog(result)
-  }
-
-  private onStartPlay = async () => {
-    ilog('app.onPausePlay()')
-
-    const playbackCallback = (e: PlayBackType) => {
-      ilog('app.playBackListener()')
-      this.setState({
-        currentPositionSec: e.currentPosition,
-        currentDurationSec: e.duration,
-        playTime: this.audio.mmssss(
-          Math.floor(e.currentPosition),
-        ),
-        duration: this.audio.mmssss(Math.floor(e.duration)),
-      })
-    }
-
-    const playbackVolume = 1.0
-
-    ilog('   arp.startPlayer()')
-    const startPlayerResult = await this.audio.startPlayer({
-      uri: this.path,
-      playbackCallback,
-      playbackVolume,
-    })
-    
-    ilog(`      startPlayerResult: ${startPlayerResult}`)
-  }
-
-  private onPausePlay = async () => {
-    ilog('app.onPausePlay()')
-    ilog('   arp.pausePlayer()')
-    await this.audio.pausePlayer()
-  }
-
-  private onResumePlay = async () => {
-    ilog('app.onResumePlay()')
-    ilog('   arp.resumePlayer()')
-    await this.audio.resumePlayer()
-  }
-
-  private onStopPlay = async () => {
-    ilog('app.onStopPlay()')
-    this.setState({
-      currentPositionSec: 0,
-      playTime: this.audio.mmssss(
-        Math.floor(0),
-      ),
-      result: await this.audio.multiply(42, 1)
-    })
-    ilog('   arp.stopPlayer()')
-    this.audio.stopPlayer()    
-  }
-
-  // ** NEW FUNCTIONS ***
-
-  private onStartWavRecord = async () => {
-    ilog('app.onStartWavRecord()')
-    ilog('   calling arp.ifAndroidEnsurePermissionsSecured()')
-    if (await this.ifAndroidEnsurePermissionsSecured() === false) {
-      return
-    }
-    const recordingCallback = (e: RecordBackType) => {
-      ilog('app.recordBackListener()')
-      this.setState({
-        recordSecs: e.currentPosition,
-        recordTime: this.audio.mmssss(
-          Math.floor(e.currentPosition),
-        ),
-      })
-      ilog('record-back', e)
-    }
-    const stoppageCallback = (e: StoppageType) => {
-      ilog('stoppage', e)
-      this.onStopWavRecord()
-    }
-    ilog('   calling arp.startWavRecorder()')
-    const result = await this.audio.startWavRecorder({
-      requestedWavParams: {
-        sampleRate: 44100,
-        numChannels: 1,
-        byteDepth: 1, //2
-      },
-      path: undefined,
-      meteringEnabled: true,
-    //  maxRecordingDurationSec: 5.0,
-      recordingCallback,
-      stoppageCallback
-    })
-    ilog(result)
-  }
-
-  private onPauseWavRecord = async () => {
-    ilog('app.onPauseWavRecord()')
-    try {
-      ilog('   calling arp.pauseWavRecorder()')
-      const r = await this.audio.pauseWavRecorder()
-      ilog(r)
-    } catch (err) {
-      ilog('pauseWavRecord Error: ', err)
-    }
-  }
-
-  private onResumeWavRecord = async () => {
-    ilog('app.onResumeWavRecord()')
-    ilog('   calling arp.resumeWavRecorder()')
-    const r = await this.audio.resumeWavRecorder()
-    ilog(r)
-  }
-
-  private onStopWavRecord = async () => {
-    ilog('app.onStopWavRecord()')
-    this.setState({
-      recordSecs: 0,
-    })
-    if (await this.audio.isRecording()) {
-      ilog('   calling arp.stopWavRecorder()')
-      const res = await this.audio.stopWavRecorder()
-      ilog(res)
-      return res
-    }
-    return 'onStopWavRecord: Wasn\'t recording'
-  }
+  return (
+    <SafeAreaView style={ss.container}>
+      <Text style={ss.titleTxt}>RnAudio Example</Text>
+      <Text style={ss.txtRecordCounter}>{recordingElapsedStr}</Text>
+      <View style={ss.viewButtonRow}>
+        <View style={ss.viewButtonSet}>
+          <Button
+            style={ss.btn}
+            onPress={onStartRecord}
+            txtStyle={ss.txt}
+          >
+            Record
+          </Button>
+          <Button
+            style={ss.btn}
+            onPress={onPauseRecord}
+            txtStyle={ss.txt}
+          >
+            Pause
+          </Button>
+          <Button
+            style={ss.btn}
+            onPress={onResumeRecord}
+            txtStyle={ss.txt}
+          >
+            Resume
+          </Button>
+          <Button
+            style={ss.btn}
+            onPress={onStopRecord}
+            txtStyle={ss.txt}
+          >
+            Stop
+          </Button>
+        </View>
+      </View>
+      <View style={ss.viewPlayer}>
+        <TouchableOpacity
+          style={ss.viewBarWrapper}
+          onPress={onStatusPress}
+        >
+          <View style={ss.viewBar}>
+            <View style={[ss.viewBarPlay, {width: playWidth}]} />
+          </View>
+        </TouchableOpacity>
+        <Text style={ss.txtCounter}>
+          {playbackElapsedStr} / {playbackDurationStr}
+        </Text>
+        <View style={ss.playBtnWrapper}>
+          <Button
+            style={ss.btn}
+            onPress={onStartPlay}
+            txtStyle={ss.txt}
+          >
+            Play
+          </Button>
+          <Button style={ss.btn}
+            onPress={onPausePlay}
+            txtStyle={ss.txt}
+          >
+            Pause
+          </Button>
+          <Button
+            style={ss.btn}
+            onPress={onResumePlay}
+            txtStyle={ss.txt}
+          >
+            Resume
+          </Button>
+          <Button
+            style={ss.btn}
+            onPress={onStopPlay}
+            txtStyle={ss.txt}
+          >
+            Stop
+          </Button> 
+        </View>
+      </View>
+    </SafeAreaView>
+  )
 }

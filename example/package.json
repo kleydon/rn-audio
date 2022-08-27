@@ -11,9 +11,9 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "await-to-js": "^3.0.0",
     "react": "17.0.2",
-    "react-native": "0.68.2",
-    "rn-fetch-blob": "^0.12.0"
+    "react-native": "0.68.2"
   },
   "devDependencies": {
     "@babel/core": "^7.12.10",

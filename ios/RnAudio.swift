@@ -5,75 +5,597 @@ import AVFoundation
 @objc(RnAudio)
 class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
-  var subscriptionDuration: Double = 0.5
-  var audioFileURL: URL?
-
-  // Recorder
-  var audioRecorder: AVAudioRecorder!
-  var audioSession: AVAudioSession!
-  var recordTimer: Timer?
-  var _meteringEnabled: Bool = false
-
-  // Player
-  var pausedPlayTime: CMTime?
-  var audioPlayerAsset: AVURLAsset!
-  var audioPlayerItem: AVPlayerItem!
-  var audioPlayer: AVPlayer!
-  var playTimer: Timer?
-  var timeObserverToken: Any?
-
-  @objc
-  func construct() {
-    self.subscriptionDuration = 0.1
+  let TAG = "RnAudio"
+    
+  //Events passed from native -> js
+  enum EventId : String {
+    case RecUpdate
+    case PlayUpdate
+    case RecStop
+    case PlayStop
   }
+
+  //Recording stop codes
+  enum RecStopCode : String {
+    case Requested
+    case MaxDurationReached
+    case Error
+  }
+
+  //Playback stop codes
+  enum PlayStopCode : String {
+    case Requested
+    case MaxDurationReached
+    case Error
+  }
+
+  //Recorder states
+  enum RecorderState : String {
+    case Recording
+    case Paused
+    case Stopped
+  }
+
+  //Player states
+  enum PlayerState : String {
+    case Playing
+    case Paused
+    case Stopped
+  }
+
+  enum RnAudioError: Error {
+    case error(String)
+  }
+    
+  //Keys 
+  enum Key : String {
+    //Recording Option Keys
+    //++++++++
+    //Cross-platform
+    case audioFileNameOrPath
+    case recMeteringEnabled
+    case maxRecDurationSec
+    case sampleRate
+    case numChannels
+    case lpcmByteDepth
+    case encoderBitRate
+    //Apple specific
+    case appleAudioFormatId
+    case appleAVAudioSessionModeId
+    case appleAVEncoderAudioQualityId
+    //Apple LPCM/WAV-specific
+    case appleAVLinearPCMBitDepth
+    case appleAVLinearPCMIsBigEndian
+    case appleAVLinearPCMIsFloatKeyIOS
+    case appleAVLinearPCMIsNonInterleaved
+    //-------- 
+    //Other
+    case grantedOptions
+    //Event detail and play/rec stop code keys
+    //++++++++
+    case isMuted
+    case isRecording
+    case recStopCode
+    case playStopCode
+    case recElapsedMs
+    case recMeterLevelDb
+    case playElapsedMs
+    case playDurationMs
+    //-------- 
+  }
+
+  //Default filename info
+  let DEFAULT_FILE_NAME_PLACEHOLDER = "DEFAULT"
+  let DEFAULT_FILENAME = "sound.m4a"
+
+  let DEFAULT_MAX_REC_DURATION_SEC = 10.0
+  let DEFAULT_SUBSCRIPTION_DURATION_SEC = 0.5
+
+  // Set this with resolveFilePathOrURL(). Can only be a URL when playing
+  var _audioFilePathOrURL: URL? = nil
+
+  //Durations
+  var _subscriptionDurationSec: Double = 0.5 // Initialized in constructor
+  var _maxRecDurationSec: Double = 10.0  // Initialized in constructor
+
+  // Recording-related
+  var _audioRecorder: AVAudioRecorder!
+  var _audioSession: AVAudioSession!
+  var _recordTimer: Timer?
+  var _recMeteringEnabled: Bool = false
+
+  // Playback-related
+  var _audioPlayerAsset: AVURLAsset!
+  var _audioPlayerItem: AVPlayerItem!
+  var _audioPlayer: AVPlayer!
+  var _timeObserverToken: Any?
+
+
+  override init() {
+    super.init()
+    _subscriptionDurationSec = DEFAULT_SUBSCRIPTION_DURATION_SEC
+    _maxRecDurationSec = DEFAULT_MAX_REC_DURATION_SEC
+  }
+    
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+
 
   override static func requiresMainQueueSetup() -> Bool {
-    return true
+    return false  // Which should it be, and why?
   }
+
 
   override func supportedEvents() -> [String]! {
-    return ["rn-playback", "rn-recordback", "rn-stoppage"]
+    return [ 
+      EventId.RecUpdate.rawValue,
+      EventId.RecStop.rawValue,
+      EventId.PlayUpdate.rawValue,
+      EventId.PlayStop.rawValue
+    ]
   }
 
-  func setAudioFileURL(path: String) {
-    if (path == "DEFAULT") {
+
+  func createRecStopResult(recStopCode:RecStopCode) -> [String: Any] {
+    return [
+      Key.recStopCode.rawValue: recStopCode.rawValue,
+      Key.audioFileNameOrPath.rawValue: _audioFilePathOrURL?.absoluteString ?? ""
+    ] as [String : Any]
+  }
+
+  func sendRecStopEvent(recStopCode:RecStopCode) {
+    sendEvent(withName: EventId.RecStop.rawValue, 
+                  body: createRecStopResult(recStopCode: recStopCode))
+  }
+
+  func sendRecUpdateEvent(elapsedMs:Double, isRecording:Bool, meterLevelDb:Float) {
+    sendEvent(withName: EventId.RecUpdate.rawValue, body: [
+      Key.isRecording.rawValue: isRecording,
+      Key.recElapsedMs.rawValue: elapsedMs,
+      Key.recMeterLevelDb.rawValue: meterLevelDb
+    ] as [String : Any])
+  }
+
+  func sendPlayUpdateEvent(elapsedMs:Double, durationMs:Double, isMuted:Bool) {
+    sendEvent(withName: EventId.PlayUpdate.rawValue,
+      body: [
+        Key.isMuted.rawValue: isMuted,
+        Key.playElapsedMs.rawValue: elapsedMs,
+        Key.playDurationMs.rawValue: durationMs,
+      ] as [String: Any]
+    )
+  }
+
+  func createPlayStopResult(playStopCode:PlayStopCode) -> [String: Any] {
+    return [
+      Key.playStopCode.rawValue: playStopCode.rawValue,
+      Key.audioFileNameOrPath.rawValue: _audioFilePathOrURL?.absoluteString ?? ""
+    ] as [String : Any]
+  }
+
+  func sendPlayStopEvent(playStopCode:PlayStopCode) {
+    sendEvent(withName: EventId.PlayStop.rawValue, 
+                  body: createPlayStopResult(playStopCode:playStopCode))
+  }
+
+    
+  @objc(setSubscriptionDuration:)
+  func setSubscriptionDuration(durationSec: Double) -> Void {
+    let funcName = TAG + ".setSubscriptionDuration()"
+    print(funcName)
+    _subscriptionDurationSec = durationSec
+  }
+
+ 
+    
+  func isURLString(maybeURLString:String) -> Bool {
+    return (maybeURLString.hasPrefix("http://") ||
+            maybeURLString.hasPrefix("https://"))
+  }
+    
+
+  func assertFileExists(filePath:String) throws -> Void {
+    let funcName = "assertFileExists()"
+    print(funcName)
+    if (FileManager.default.fileExists(atPath:filePath) == false) {
+      throw RnAudioError.error("File to play doesn't exist.")
+    }
+  }
+    
+
+  func resolveFilePathOrURL(rawFileNameOrPathOrURL: String?) -> URL {
+    let funcName = TAG + ".resolveFilePathOrURL()"
+    print(funcName)
+    let v = rawFileNameOrPathOrURL
+    if (v != nil && 
+        (v!.hasPrefix("http://") || 
+         v!.hasPrefix("https://") || 
+         v!.hasPrefix("file://") ||
+         v!.hasPrefix("/") ||
+         v!.hasPrefix("./") ||
+         v!.hasPrefix("../"))) {
+      return URL(string: v!)!
+    }
+    else if (v != nil && v != "" && v != DEFAULT_FILE_NAME_PLACEHOLDER) {
       let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-      audioFileURL = cachesDirectory.appendingPathComponent("sound.m4a")
-    } else if (path.hasPrefix("http://") || path.hasPrefix("https://") || path.hasPrefix("file://")) {
-      audioFileURL = URL(string: path)
-    } else {
+      return cachesDirectory.appendingPathComponent(v!)
+    }
+    else { // Could do more to provide the right filename based on knowing
+           // the encoding...
       let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-      audioFileURL = cachesDirectory.appendingPathComponent(path)
+      return cachesDirectory.appendingPathComponent(DEFAULT_FILENAME)
     }
   }
 
-  /**********               Recorder               **********/
 
-  @objc(updateRecorderProgress:)
-  public func updateRecorderProgress(timer: Timer) -> Void {
-    if (audioRecorder != nil) {
-      var currentMetering: Float = 0
+  // RECORDER
 
-      if (_meteringEnabled) {
-        audioRecorder.updateMeters()
-        currentMetering = audioRecorder.averagePower(forChannel: 0)
+  func kAudioFormatNumberFromAudioFormatId(formatId:String?) -> Int {
+    let funcName = TAG + ".kAudioFormatNumberFromAudioFormatId()"
+    print(funcName)
+    // (8/17/2022) According to https://developer.apple.com/documentation/avfaudio/avaudiorecorder/1388386-init
+    // AVAudioRecorder.init(url: settings) only supports 
+    //   kAudioFormatLinearPCM
+    //   kAudioFormatMPEG4AAC
+    //   kAudioFormatAppleLossless
+    //   kAudioFormatAppleIMA4
+    //   kAudioFormatiLBC
+    //   kAudioFormatULaw
+    switch formatId {
+      case "lpcm":
+        return Int(kAudioFormatLinearPCM)
+      case "aac":
+        return Int(kAudioFormatMPEG4AAC)
+      case "mp4":      
+        return Int(kAudioFormatMPEG4AAC)
+      case "alac":      
+        return Int(kAudioFormatAppleLossless)
+      case "ilbc":
+        return Int(kAudioFormatiLBC)
+      case "ulaw":
+        return Int(kAudioFormatULaw)
+      //Possibly unsupported by AvAudioRecorder (8/17/2022):
+      case "ima4":
+        return Int(kAudioFormatAppleIMA4)
+      case "MAC3":
+        return Int(kAudioFormatMACE3)
+      case "MAC6":
+        return Int(kAudioFormatMACE6)
+      case "alaw":
+        return Int(kAudioFormatALaw)
+      case "mp1":
+        return Int(kAudioFormatMPEGLayer1)
+      case "mp2":
+        return Int(kAudioFormatMPEGLayer2)
+      case "amr":      
+        return Int(kAudioFormatAMR) 
+      case "opus":      
+        return Int(kAudioFormatOpus)
+      case "flac":
+        if #available(iOS 11.0, *) {
+          return Int(kAudioFormatFLAC)
+        }
+        fallthrough
+      default:
+        return Int(kAudioFormatAppleLossless)
+    }
+  }
+
+  func avAudioSessionModeFromString(modeStr:String?) -> AVAudioSession.Mode {
+    let funcName = TAG + ".avAudioSessionModeFromString()"
+    print(funcName)
+    switch modeStr {
+      case "measurement":
+        return AVAudioSession.Mode.measurement
+      case "gamechat":
+        return AVAudioSession.Mode.gameChat
+      case "movieplayback":
+        return AVAudioSession.Mode.moviePlayback
+      case "spokenaudio":
+        return AVAudioSession.Mode.spokenAudio
+      case "videochat":
+        return AVAudioSession.Mode.videoChat
+      case "videorecording":
+        return AVAudioSession.Mode.videoRecording
+      case "voicechat":
+        return AVAudioSession.Mode.voiceChat
+      case "voiceprompt":
+        if #available(iOS 12.0, *) {
+          return AVAudioSession.Mode.voicePrompt
+        }
+        fallthrough
+      default:
+        return AVAudioSession.Mode.default
+    }
+  }
+
+
+  @objc(getRecorderState:rejecter:)
+  func getRecorderState(resolver resolve: @escaping RCTPromiseResolveBlock,
+                        rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+    let funcName = TAG + ".getRecorderState()"
+    print(funcName)
+    if (_audioRecorder != nil && _audioRecorder.isRecording) {
+      resolve(RecorderState.Recording.rawValue)
+    }
+    else if (_audioRecorder != nil && !_audioRecorder.isRecording) {
+      resolve(RecorderState.Paused.rawValue)
+    }
+    else {
+      resolve(RecorderState.Stopped.rawValue)
+    }
+  }
+
+
+  @objc(startRecorder:resolve:reject:)
+  func startRecorder(recordingOptions: [String: Any],
+                     resolver resolve: @escaping RCTPromiseResolveBlock,
+                     rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+    let funcName = TAG + ".startRecorder()"
+    print(funcName)
+
+    let ro = recordingOptions
+
+    print("  Requested recordingOptions:", ro)
+    print("    shared:")
+    print("      audioFileNameOrPath: ", ro[Key.audioFileNameOrPath.rawValue] as Any)
+    print("      recMeteringEnabled: ", ro[Key.recMeteringEnabled.rawValue] as Any)
+    print("      maxRecDurationSec: ", ro[Key.maxRecDurationSec.rawValue] as Any)
+    print("      sampleRate: ", ro[Key.sampleRate.rawValue] as Any)
+    print("      numChannels: ", ro[Key.numChannels.rawValue] as Any)
+    print("      lpcmByteDepth: ", ro[Key.lpcmByteDepth.rawValue] as Any)
+    print("      encoderBitRate: ", ro[Key.encoderBitRate.rawValue] as Any)
+    print("    apple:")
+    print("      mode: ", ro[Key.appleAVAudioSessionModeId.rawValue] as Any)
+    print("      format: ", ro[Key.appleAudioFormatId.rawValue] as Any)
+    print("      apple-compressed:")
+    print("        quality: ", ro[Key.appleAVEncoderAudioQualityId.rawValue] as Any)
+    print("      apple-lpcm:")
+    print("        lpcmIsBigEndian: ", ro[Key.appleAVLinearPCMIsBigEndian.rawValue] as Any)
+    print("        lpcmIsFloatKey: ", ro[Key.appleAVLinearPCMIsFloatKeyIOS.rawValue] as Any)
+    print("        lpcmIsNonInterleaved: ", ro[Key.appleAVLinearPCMIsNonInterleaved.rawValue] as Any)
+
+    //Shared
+    _audioFilePathOrURL = resolveFilePathOrURL(rawFileNameOrPathOrURL: ro[Key.audioFileNameOrPath.rawValue] as? String ?? DEFAULT_FILE_NAME_PLACEHOLDER)
+    _recMeteringEnabled = (ro[Key.recMeteringEnabled.rawValue] as? Bool) ?? true
+    _maxRecDurationSec = (ro[Key.maxRecDurationSec.rawValue] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
+    let sampleRate = ro[Key.sampleRate.rawValue] as? Int ?? 44100
+    let numChannels = ro[Key.numChannels.rawValue] as? Int ?? 1
+    let encoderBitRate = ro[Key.encoderBitRate.rawValue] as? Int ?? 128000
+    //Apple-specific
+    let mode = avAudioSessionModeFromString(modeStr: ro[Key.appleAVAudioSessionModeId.rawValue] as? String)
+    let format = kAudioFormatNumberFromAudioFormatId(formatId: ro[Key.appleAudioFormatId.rawValue] as? String)
+    //Apple compressed-audio specific
+    let quality = ro[Key.appleAVEncoderAudioQualityId.rawValue] as? Int ?? AVAudioQuality.medium.rawValue
+    //Apple LPCM-specific
+    let lpcmBitDepth = ((ro[Key.lpcmByteDepth.rawValue] as? Int) ?? 2) * 8  // Defaults to 2 bytes * 8 = 16 bits
+    let lpcmIsBigEndian = ro[Key.appleAVLinearPCMIsBigEndian.rawValue] as? Bool ?? false  // Default for WAV; see: http://soundfile.sapp.org/doc/WaveFormat/
+    let lpcmIsFloatKey = ro[Key.appleAVLinearPCMIsFloatKeyIOS.rawValue] as? Bool ?? false  // Default to signed integer values
+    let lpcmIsNonInterleaved = ro[Key.appleAVLinearPCMIsNonInterleaved.rawValue] as? Bool ?? false //Default is that samples ARE interleaved; [ L,R; L,R; L,R... ]
+
+    print("  COERCED recordingOptions:")
+    print("    shared:")
+    print("      audioFilePathOrURL: ", _audioFilePathOrURL!)
+    print("      _recMeteringEnabled: ", _recMeteringEnabled)
+    print("      maxRecDurationSec: ", _maxRecDurationSec)
+    print("      sampleRate: ", sampleRate)
+    print("      numChannels: ", numChannels)
+    print("    apple:")
+    print("      mode: ", mode)
+    print("      format: ", format)
+    print("    apple-compressed:")
+    print("      quality: ", quality)
+    print("    apple-lpcm:")
+    print("      lpcmBitDepth: ", lpcmBitDepth)
+    print("      lpcmIsBigEndian: ", lpcmIsBigEndian)
+    print("      lpcmIsFloatKey: ", lpcmIsFloatKey)
+    print("      lpcmIsNonInterleaved: ", lpcmIsNonInterleaved)
+
+    func startRecording() {
+      print(funcName + ".startRecording()")
+      
+      //Begin with the "base" AVAudioRecorder requested settings
+      var avAudioRecorderRequestedSettings = [
+        AVFormatIDKey: format,
+        AVSampleRateKey: sampleRate,
+        AVNumberOfChannelsKey: numChannels,
+      ] as [String: Any]
+
+      //Merge in format-specific settings
+      if (format == Int(kAudioFormatLinearPCM)) {
+        //Merge in LPCM-specific settings
+          avAudioRecorderRequestedSettings.merge([
+            AVLinearPCMBitDepthKey: lpcmBitDepth,
+            AVLinearPCMIsBigEndianKey: lpcmIsBigEndian,
+            AVLinearPCMIsFloatKey: lpcmIsFloatKey,
+            AVLinearPCMIsNonInterleaved: lpcmIsNonInterleaved
+          ]){(current, _) in current}
       }
+      else {
+        //Merge in encoded/compressed settings
+        avAudioRecorderRequestedSettings.merge([
+          AVEncoderAudioQualityKey: quality,
+          AVEncoderBitRateKey: encoderBitRate
+        ]){(current, _) in current}
+      }
+        
+      print("  ")
+      print("  ")
+      print("  audioFilePathOrURL:", _audioFilePathOrURL!)
+      print("  ")
+      print("  avAudioRecorderRequestedSettings:", avAudioRecorderRequestedSettings)
+      print("  ")
+      print("  ")
+      
+      do {
+        _audioRecorder = try AVAudioRecorder(url: _audioFilePathOrURL!, 
+                                        settings: avAudioRecorderRequestedSettings)
+        
+        if (_audioRecorder == nil) {
+          sendRecStopEvent(recStopCode: RecStopCode.Error)
+          return reject(TAG, "Error occured during initiating recorder", nil)
+        }
+  
+        _audioRecorder.prepareToRecord()
+        _audioRecorder.delegate = self
+          
+        _audioRecorder.isMeteringEnabled = _recMeteringEnabled
 
-      let status = [
-        "isRecording": audioRecorder.isRecording,
-        "currentPosition": audioRecorder.currentTime * 1000,
-        "currentMetering": currentMetering,
-      ] as [String : Any];
+        //Begin set of granted recording options that will actually be used
+        var grantedOptions = [
+          //Cross-platform
+          Key.audioFileNameOrPath.rawValue: _audioFilePathOrURL!.absoluteString,
+          Key.recMeteringEnabled.rawValue: _recMeteringEnabled,
+          Key.maxRecDurationSec.rawValue: _maxRecDurationSec,
+          Key.sampleRate.rawValue: _audioRecorder.settings[AVSampleRateKey]!,
+          Key.numChannels.rawValue: _audioRecorder.settings[AVNumberOfChannelsKey]!, 
+          Key.appleAudioFormatId.rawValue: _audioRecorder.settings[AVFormatIDKey]!,
+          Key.appleAVAudioSessionModeId.rawValue: _audioSession.mode
+        ] as [String: Any]
+        
+        //Include apple-specific options granted by the hardware
+        if (format == Int(kAudioFormatLinearPCM)) {
+          //LPCM
+          grantedOptions[Key.appleAVLinearPCMBitDepth.rawValue] =
+              _audioRecorder.settings[AVLinearPCMBitDepthKey]
+          grantedOptions[Key.lpcmByteDepth.rawValue] =
+              (_audioRecorder.settings[AVLinearPCMBitDepthKey] as! Int) / 8
+          grantedOptions[Key.appleAVLinearPCMIsBigEndian.rawValue] =
+              _audioRecorder.settings[AVLinearPCMIsBigEndianKey]
+          grantedOptions[Key.appleAVLinearPCMIsFloatKeyIOS.rawValue] =
+              _audioRecorder.settings[AVLinearPCMIsFloatKey]
+          grantedOptions[Key.appleAVLinearPCMIsNonInterleaved.rawValue] = _audioRecorder.settings[AVLinearPCMIsNonInterleaved]
+        }
+        else { //Encoded/compressed
+          //Include compressed settings
+          grantedOptions[Key.appleAVEncoderAudioQualityId.rawValue] =
+              _audioRecorder.settings[AVEncoderAudioQualityKey]
+          grantedOptions[Key.encoderBitRate.rawValue] =
+              _audioRecorder.settings[AVEncoderBitRateKey]
+        }
+        
+        let isRecordStarted = _audioRecorder.record()
+        if (!isRecordStarted) {
+          sendRecStopEvent(recStopCode: RecStopCode.Error)
+          return reject(TAG, "Error calling _audioRecorder.record()", nil)
+        }
 
-      sendEvent(withName: "rn-recordback", body: status)
+        startRecorderTimer()
+
+        return resolve(grantedOptions)
+      } 
+      catch {
+        sendRecStopEvent(recStopCode: RecStopCode.Error)
+        return reject(TAG, "startRecording() - Error occured", nil)
+      }
+    }
+
+    _audioSession = AVAudioSession.sharedInstance()
+
+    do {
+      try _audioSession.setCategory(.playAndRecord, mode: mode, options: [
+        AVAudioSession.CategoryOptions.defaultToSpeaker
+      ])
+      try _audioSession.setActive(true)
+
+      _audioSession.requestRecordPermission { granted in
+        DispatchQueue.main.async {
+          if granted {
+            startRecording()
+          } else {
+            return reject(self.TAG, funcName + " Recording permission not granted", nil)
+          }
+        }
+      }
+    } catch {
+      return reject(TAG, funcName + " Failed to record", nil)
     }
   }
+
+
+  @objc(pauseRecorder:rejecter:)
+  public func pauseRecorder(
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) -> Void {
+    let funcName = TAG + ".pauseRecorder()"
+    print(funcName)
+
+    if (_audioRecorder == nil) {
+      return reject(TAG, funcName + " Can't pause recording; recorder is not recording", nil)
+    }
+
+    _recordTimer?.invalidate()
+    _recordTimer = nil;
+
+    _audioRecorder.pause()
+
+    return resolve(funcName + " Recording paused")
+  }
+
+
+  @objc(resumeRecorder:rejecter:)
+  public func resumeRecorder(
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) -> Void {
+    let funcName = TAG + ".resumeRecorder()"
+    print(funcName)
+
+    if (_audioRecorder == nil) {
+      return reject(TAG, funcName + " Can't resume recording; recorder is not recording", nil)
+    }
+
+    _audioRecorder.record()
+
+    if (_recordTimer == nil) {
+      startRecorderTimer()
+    }
+
+    resolve(funcName + " Recording resumed")
+  }
+
+
+  @objc(stopRecorder:rejecter:)
+  public func stopRecorder(
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) -> Void {
+    let funcName = TAG + ".stopRecorder(promise)"
+    print(funcName)
+    
+    if (_audioRecorder == nil) {
+      return resolve(funcName + " Recorder already stopped.")
+    }
+
+    sendRecStopEvent(recStopCode: RecStopCode.Requested)
+      
+    stopRecorder()
+    
+    return resolve(createRecStopResult(recStopCode:RecStopCode.Requested))
+  }
+  func stopRecorder() { // requested: Not due to error or timeout
+    let funcName = TAG + ".stopRecorder()"
+    print(funcName)
+    if (_audioRecorder != nil) {
+      _audioRecorder.stop()
+      _audioRecorder = nil
+    }
+    if (_recordTimer != nil) {
+      _recordTimer!.invalidate()
+      _recordTimer = nil
+    }
+  }
+
 
   @objc(startRecorderTimer)
   func startRecorderTimer() -> Void {
+    let funcName = TAG + ".startRecorderTimer()"
+    print(funcName)
     DispatchQueue.main.async {
-      self.recordTimer = Timer.scheduledTimer(
-        timeInterval: self.subscriptionDuration,
+      self._recordTimer = Timer.scheduledTimer(
+        timeInterval: self._subscriptionDurationSec,
         target: self,
         selector: #selector(self.updateRecorderProgress),
         userInfo: nil,
@@ -82,343 +604,163 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     }
   }
 
-  @objc(pauseRecorder:rejecter:)
-  public func pauseRecorder(
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) -> Void {
-    if (audioRecorder == nil) {
-      return reject("RNAudioPlayerRecorder", "Recorder is not recording", nil)
-    }
 
-    recordTimer?.invalidate()
-    recordTimer = nil;
-
-    audioRecorder.pause()
-    resolve("Recorder paused!")
-  }
-
-  @objc(resumeRecorder:rejecter:)
-  public func resumeRecorder(
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) -> Void {
-
-    if (audioRecorder == nil) {
-      return reject("RNAudioPlayerRecorder", "Recorder is nil", nil)
-    }
-
-    audioRecorder.record()
-
-    if (recordTimer == nil) {
-      startRecorderTimer()
-    }
-
-    resolve("Recorder paused!")
-  }
-
-  @objc(audioPlayerDidFinishPlaying:)
-  public static func audioPlayerDidFinishPlaying(player: AVAudioRecorder) -> Bool {
-    return true
-  }
-
-  @objc(setSubscriptionDuration:)
-  func setSubscriptionDuration(duration: Double) -> Void {
-    subscriptionDuration = duration
-  }
-
-  /**********               Recorder               **********/
-
-//@objc(startRecorder:audioSets:meteringEnabled:resolve:reject:)
-  @objc(startRecorder:path:meteringEnabled:maxRecordingDurationSec:resolve:reject:)
-  func startRecorder(
-          audioSets: [String: Any],
-          path: String,
-          meteringEnabled: Bool, 
-          maxRecordingDurationSec: Double,
-          resolver resolve: @escaping RCTPromiseResolveBlock,
-          rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
-
-    print("startRecorder()")
-
-    _meteringEnabled = meteringEnabled;
-
-    let encoding = audioSets["AVFormatIDKeyIOS"] as? String
-    let mode = audioSets["AVModeIOS"] as? String
-    let avLPCMBitDepth = audioSets["AVLinearPCMBitDepthKeyIOS"] as? Int
-    let avLPCMIsBigEndian = audioSets["AVLinearPCMIsBigEndianKeyIOS"] as? Bool
-    let avLPCMIsFloatKey = audioSets["AVLinearPCMIsFloatKeyIOS"] as? Bool
-    let avLPCMIsNonInterleaved = audioSets["AVLinearPCMIsNonInterleavedIOS"] as? Bool
-
-    print(" avLPCMBitDepth:", avLPCMBitDepth)
-    print(" avLPCMIsBigEndian:", avLPCMIsBigEndian)
-    print(" avLPCMIsFloatKey:", avLPCMIsFloatKey)
-    print(" avLPCMIsNonInterleaved:", avLPCMIsNonInterleaved)
-  
-    var avFormat: Int? = nil
-    var avMode: AVAudioSession.Mode = AVAudioSession.Mode.default
-    var sampleRate = audioSets["AVSampleRateKeyIOS"] as? Int
-    var numberOfChannel = audioSets["AVNumberOfChannelsKeyIOS"] as? Int
-    var audioQuality = audioSets["AVEncoderAudioQualityKeyIOS"] as? Int
-
-    print(" avFormat:", avFormat)
-    print(" avMode:", avMode)
-    print(" sampleRate:", sampleRate)
-    print(" numberOfChannel:", numberOfChannel)
-    print(" audioQuality:", audioQuality)
-
-    setAudioFileURL(path: path)
-
-    if (sampleRate == nil) {
-      sampleRate = 44100;
-    }
-
-    if (encoding == nil) {
-      avFormat = Int(kAudioFormatAppleLossless)
-    } else {
-      if (encoding == "lpcm") {
-        avFormat = Int(kAudioFormatAppleIMA4)
-      } else if (encoding == "ima4") {
-        avFormat = Int(kAudioFormatAppleIMA4)
-      } else if (encoding == "aac") {
-        avFormat = Int(kAudioFormatMPEG4AAC)
-      } else if (encoding == "MAC3") {
-        avFormat = Int(kAudioFormatMACE3)
-      } else if (encoding == "MAC6") {
-        avFormat = Int(kAudioFormatMACE6)
-      } else if (encoding == "ulaw") {
-        avFormat = Int(kAudioFormatULaw)
-      } else if (encoding == "alaw") {
-        avFormat = Int(kAudioFormatALaw)
-      } else if (encoding == "mp1") {
-        avFormat = Int(kAudioFormatMPEGLayer1)
-      } else if (encoding == "mp2") {
-        avFormat = Int(kAudioFormatMPEGLayer2)
-      } else if (encoding == "mp4") {
-        avFormat = Int(kAudioFormatMPEG4AAC)
-      } else if (encoding == "alac") {
-        avFormat = Int(kAudioFormatAppleLossless)
-      } else if (encoding == "amr") {
-        avFormat = Int(kAudioFormatAMR)
-      } else if (encoding == "flac") {
-        if #available(iOS 11.0, *) {
-          avFormat = Int(kAudioFormatFLAC)
-        }
-      } else if (encoding == "opus") {
-        avFormat = Int(kAudioFormatOpus)
-      }
-    }
-
-    if (mode == "measurement") {
-      avMode = AVAudioSession.Mode.measurement
-    } else if (mode == "gamechat") {
-      avMode = AVAudioSession.Mode.gameChat
-    } else if (mode == "movieplayback") {
-      avMode = AVAudioSession.Mode.moviePlayback
-    } else if (mode == "spokenaudio") {
-      avMode = AVAudioSession.Mode.spokenAudio
-    } else if (mode == "videochat") {
-      avMode = AVAudioSession.Mode.videoChat
-    } else if (mode == "videorecording") {
-      avMode = AVAudioSession.Mode.videoRecording
-    } else if (mode == "voicechat") {
-      avMode = AVAudioSession.Mode.voiceChat
-    } else if (mode == "voiceprompt") {
-      if #available(iOS 12.0, *) {
-        avMode = AVAudioSession.Mode.voicePrompt
-      } else {
-        // Fallback on earlier versions
-      }
-    }
-
-
-    if (numberOfChannel == nil) {
-      numberOfChannel = 2
-    }
-
-    if (audioQuality == nil) {
-      audioQuality = AVAudioQuality.medium.rawValue
-    }
-
-    func startRecording() {
-      
-      print("startRecording()")
-      
-      let settings = [
-        AVSampleRateKey: sampleRate!,
-        AVFormatIDKey: avFormat!,
-        AVNumberOfChannelsKey: numberOfChannel!,
-        AVEncoderAudioQualityKey: audioQuality!,
-        AVLinearPCMBitDepthKey: avLPCMBitDepth ?? AVLinearPCMBitDepthKey.count,
-        AVLinearPCMIsBigEndianKey: avLPCMIsBigEndian ?? true,
-        AVLinearPCMIsFloatKey: avLPCMIsFloatKey ?? false,
-        AVLinearPCMIsNonInterleaved: avLPCMIsNonInterleaved ?? false
-      ] as [String : Any]
-      
-      print("  1")
-      print("  audioFileURL:", audioFileURL!)
-      print("  settings:", settings)
-
-      do {
-        audioRecorder = try AVAudioRecorder(url: audioFileURL!, settings: settings)
-
-      print("  2")
-
-        if (audioRecorder != nil) {
-          
-          print("  3")
-
-          audioRecorder.prepareToRecord()
-
-          print("  4")
-
-          audioRecorder.delegate = self
-          audioRecorder.isMeteringEnabled = _meteringEnabled
-          let isRecordStarted = audioRecorder.record()
-
-          print("  5")
-
-          if (!isRecordStarted) {
-            print("  6")
-            reject("RNAudioPlayerRecorder", "Error occured during initiating recorder", nil)
-            return
-          }
-
-          print("  7")
-
-          startRecorderTimer()
-
-          print("  8")
-
-          resolve(audioFileURL?.absoluteString)
- 
-          return
-        }
-
-        reject("RNAudioPlayerRecorder", "Error occured during initiating recorder", nil)
-      } catch {
-        reject("RNAudioPlayerRecorder", "Error occured during recording", nil)
-      }
-    }
-
-    audioSession = AVAudioSession.sharedInstance()
-
-    do {
-      try audioSession.setCategory(.playAndRecord, mode: avMode, options: [AVAudioSession.CategoryOptions.defaultToSpeaker, AVAudioSession.CategoryOptions.allowBluetooth])
-      try audioSession.setActive(true)
-
-      audioSession.requestRecordPermission { granted in
-        DispatchQueue.main.async {
-          if granted {
-            startRecording()
-          } else {
-            reject("RNAudioPlayerRecorder", "Record permission not granted", nil)
-          }
-        }
-      }
-    } catch {
-      reject("RNAudioPlayerRecorder", "Failed to record", nil)
-    }
-  }
-
-  @objc(stopRecorder:rejecter:)
-  public func stopRecorder(
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) -> Void {
-    if (audioRecorder == nil) {
-      reject("RNAudioPlayerRecorder", "Failed to stop recorder. It is already nil.", nil)
+  @objc func updateRecorderProgress(timer: Timer) -> Void {
+    let funcName = TAG + ".updateRecorderProgress()"
+    print(funcName)
+    
+    if (_audioRecorder == nil) {
       return
     }
-
-    audioRecorder.stop()
-
-    if (recordTimer != nil) {
-      recordTimer!.invalidate()
-      recordTimer = nil
+    
+    //_audioRecorder is STILL not assumed to be non-nil below,
+    //because I've encountered a situation where it WASN'T.
+    //(Possibly due to asynchronous access? Not sure.)
+    var meterLevelDb: Float = 0
+    if (_recMeteringEnabled) {
+      _audioRecorder?.updateMeters()
+      meterLevelDb = _audioRecorder?.averagePower(forChannel: 0) ?? 0.0
     }
+    let elapsedMs = _audioRecorder?.currentTime ?? 0
+    let isRecording = _audioRecorder?.isRecording ?? false
 
-    resolve(audioFileURL?.absoluteString)
-  }
-
-  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-    if !flag {
-      print("Failed to stop recorder")
+    if (elapsedMs < 0) {
+      print(funcName + " - elapsed time negative; some problem occurred.")
+      stopRecorder()
+      sendRecStopEvent(recStopCode: RecStopCode.Error)
+      return
     }
-  }
-
-  /**********               Player               **********/
-
-  func addPeriodicTimeObserver() {
-    let timeScale = CMTimeScale(NSEC_PER_SEC)
-    let time = CMTime(seconds: subscriptionDuration, preferredTimescale: timeScale)
-
-    timeObserverToken = audioPlayer.addPeriodicTimeObserver(forInterval: time,
-                                                            queue: .main) {_ in
-      if (self.audioPlayer != nil) {
-        self.sendEvent(withName: "rn-playback", body: [
-          "isMuted": self.audioPlayer.isMuted,
-          "currentPosition": self.audioPlayerItem.currentTime().seconds * 1000,
-          "duration": self.audioPlayerItem.asset.duration.seconds * 1000,
-        ])
-      }
+    if (elapsedMs < _maxRecDurationSec) {
+      sendRecUpdateEvent(elapsedMs: elapsedMs * 1000, 
+                    isRecording: isRecording,
+                    meterLevelDb: meterLevelDb)
+    }
+    else {      
+      stopRecorder()
+      sendRecStopEvent(recStopCode:RecStopCode.MaxDurationReached)
     }
   }
 
-  func removePeriodicTimeObserver() {
-    if let timeObserverToken = timeObserverToken {
-      audioPlayer.removeTimeObserver(timeObserverToken)
-      self.timeObserverToken = nil
+
+  // PLAYER
+
+
+  @objc(getPlayerState:rejecter:)
+  func getPlayerState(resolver resolve: @escaping RCTPromiseResolveBlock,
+                      rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+    let funcName = TAG + ".getPlayerState()"
+    print(funcName)
+      if (_audioPlayer != nil && _audioPlayer.rate != 0) {
+      resolve(PlayerState.Playing.rawValue)
+    }
+      else if (_audioPlayer != nil && _audioPlayer.rate == 0.0) {
+      resolve(PlayerState.Paused.rawValue)
+    }
+    else {
+      resolve(PlayerState.Stopped.rawValue)
     }
   }
 
 
   @objc(startPlayer:httpHeaders:playbackVolume:resolver:rejecter:)
   public func startPlayer(
-    path: String,
+    fileNameOrPathOrURL: String,
     httpHeaders: [String: String],
     playbackVolume: Double,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
-    audioSession = AVAudioSession.sharedInstance()
-
+    let funcName = TAG + ".startPlayer()"
+    print(funcName)
+    _audioSession = AVAudioSession.sharedInstance()
     do {
-      try audioSession.setCategory(.playAndRecord, mode: .default, options: [AVAudioSession.CategoryOptions.defaultToSpeaker, AVAudioSession.CategoryOptions.allowBluetooth])
-      try audioSession.setActive(true)
-    } catch {
-      reject("RNAudioPlayerRecorder", "Failed to play", nil)
+      try _audioSession.setCategory(
+          .playAndRecord, 
+          mode: .default,
+          options: [
+            AVAudioSession.CategoryOptions.defaultToSpeaker,
+            AVAudioSession.CategoryOptions.allowBluetooth
+          ])
+      try _audioSession.setActive(true)
+      _audioFilePathOrURL = resolveFilePathOrURL(rawFileNameOrPathOrURL: fileNameOrPathOrURL)
+      if (_audioFilePathOrURL!.isFileURL) {
+        try assertFileExists(filePath: _audioFilePathOrURL!.path)
+      }
+      _audioPlayerAsset = AVURLAsset(url: _audioFilePathOrURL!, 
+                                     options: ["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
+      _audioPlayerItem = AVPlayerItem(asset: _audioPlayerAsset!)
+    } 
+    catch {
+      print(funcName + " - Error: ", error)
+      sendPlayStopEvent(playStopCode: PlayStopCode.Error)
+      return reject(TAG, funcName + " Failed to play", nil)
     }
 
-    setAudioFileURL(path: path)
-    audioPlayerAsset = AVURLAsset(url: audioFileURL!, options:["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
-    audioPlayerItem = AVPlayerItem(asset: audioPlayerAsset!)
-
-    if (audioPlayer == nil) {
-      audioPlayer = AVPlayer(playerItem: audioPlayerItem)
-    } else {
-      audioPlayer.replaceCurrentItem(with: audioPlayerItem)
+    if (_audioPlayer == nil) {
+      _audioPlayer = AVPlayer(playerItem: _audioPlayerItem)
+    } 
+    else {
+      _audioPlayer.replaceCurrentItem(with: _audioPlayerItem)
     }
 
-    addPeriodicTimeObserver()
-    audioPlayer.play()
-    resolve(audioFileURL?.absoluteString)
-  }
+    setPlayerVolume(volume: playbackVolume)
 
-  @objc(stopPlayer:rejecter:)
-  public func stopPlayer(
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) -> Void {
-    if (audioPlayer == nil) {
-      return reject("RNAudioPlayerRecorder", "Player is already stopped.", nil)
-    }
+    //Finished playing observer
+    NotificationCenter.default.addObserver(
+      self, 
+      selector: #selector(self.audioPlayerDidFinishPlaying),
+      name: NSNotification.Name.AVPlayerItemDidPlayToEndTime,
+      object: nil
+    )
 
-    audioPlayer.pause()
-    self.removePeriodicTimeObserver()
-    self.audioPlayer = nil;
-
-    resolve(audioFileURL?.absoluteString)
+    //Abort observers
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(self.abort),
+      name: NSNotification.Name.AVPlayerItemFailedToPlayToEndTime,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(self.abort),
+      name: NSNotification.Name.AVPlayerItemPlaybackStalled,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(self.abort),
+      name: NSNotification.Name.AVPlayerItemNewErrorLogEntry,
+      object: nil
+     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(self.abort),
+      name: AVAudioSession.interruptionNotification,
+      object: nil
+    )
+      
+    //CAUSING PROBLEMS
+    // * AVRecorder - Stops in response to pugging/unplugging mic. Ok.
+    // * AVPlayer - When you UNplug a mic, player automatically stops. Ok.
+    //              But the same is NOT true when you plug IN a mic / headset.
+    //              Perhaps routChangeNotification could take care of that.
+    // * BUT The routeChangeNotification selector fires MULTIPLE TIMES with the same
+    //   notification (?). We would need to examine if audio input / output routes
+    //   had CHANGED in order to safely call abort() - for playing
+    //NotificationCenter.default.addObserver(
+    //  self,
+    //  selector: #selector(self.abort),
+    //  name: AVAudioSession.routeChangeNotification,
+    //  object: nil
+    //)
+      
+    addPeriodicTimeObserver() 
+    
+    _audioPlayer.play()
+      
+    return resolve([
+      Key.audioFileNameOrPath.rawValue: _audioFilePathOrURL!.absoluteString
+    ] as [String : String])
   }
 
   @objc(pausePlayer:rejecter:)
@@ -426,26 +768,51 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
-    if (audioPlayer == nil) {
-      return reject("RNAudioPlayerRecorder", "Player is not playing", nil)
+    let funcName = TAG + ".pausePlayer()"
+    print(funcName)
+    if (_audioPlayer == nil) {
+      return reject(TAG, funcName + " Can't pause playback; player is not playing", nil)
     }
-
-    audioPlayer.pause()
-    resolve("Player paused!")
+    _audioPlayer.pause()
+    return resolve(funcName + " Playback paused")
   }
+
 
   @objc(resumePlayer:rejecter:)
   public func resumePlayer(
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
-    if (audioPlayer == nil) {
-      return reject("RNAudioPlayerRecorder", "Player is null", nil)
+    let funcName = TAG + ".resumePlayer()"
+    print(funcName)
+    if (_audioPlayer == nil) {
+      return reject(TAG, funcName + " Can't resume playback; player is not playing", nil)
     }
-
-    audioPlayer.play()
-    resolve("Resumed!")
+    _audioPlayer.play()
+    return resolve(funcName + " Playback resumed")
   }
+
+
+  @objc(stopPlayer:rejecter:)
+  public func stopPlayer(
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) -> Void {
+    let funcName = TAG + ".stopPlayer()"
+    print(funcName)
+    if (_audioPlayer == nil) {
+      return resolve(funcName + " Player is already stopped.")
+    }
+    _audioPlayer.pause()
+    self.removePeriodicTimeObserver()
+    self._audioPlayer = nil;
+    
+    //Send stop event
+    sendPlayStopEvent(playStopCode:PlayStopCode.Requested)
+  
+    return resolve(createPlayStopResult(playStopCode:PlayStopCode.Requested))
+  }
+
 
   @objc(seekToPlayer:resolve:rejecter:)
   public func seekToPlayer(
@@ -453,31 +820,91 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
-    if (audioPlayer == nil) {
-        return reject("RNAudioPlayerRecorder", "Player is null", nil)
+    let funcName = TAG + ".seekToPlayer()"
+    print(funcName)
+    if (_audioPlayer == nil) {
+        return reject(TAG, funcName + " Player is not playing", nil)
     }
-
-    audioPlayer.seek(to: CMTime(seconds: time / 1000, preferredTimescale: CMTimeScale(NSEC_PER_SEC)))
-    resolve("Resumed!")
+    _audioPlayer.seek(to: CMTime(seconds: time / 1000, preferredTimescale: CMTimeScale(NSEC_PER_SEC)))
+    return resolve(funcName + " Seek successful")
   }
 
-  @objc(setVolume:resolver:rejecter:)
-  public func setVolume(
-    volume: Float,
+
+  @objc(setPlayerVolume:resolver:rejecter:)
+  public func setPlayerVolume(
+    volume: Double,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
-    audioPlayer.volume = volume
-    resolve(volume)
+    let funcName = TAG + ".setPlayerVolume()"
+    print(funcName)
+    if (volume < 0.0 || volume > 1.0) {
+      return reject(TAG, funcName + " - Error: volume must be between [0.0 - 1.0] ", nil)
+    }
+    setPlayerVolume(volume: volume)
+    return resolve(volume)
+  }
+  private func setPlayerVolume(volume:Double) {
+    _audioPlayer?.volume = Float(volume)
   }
 
-  // *******
+    
 
-  @objc(multiply:withB:withResolver:withRejecter:)
-  func multiply(a: Float,
-                b: Float,
-                resolver resolve: RCTPromiseResolveBlock,
-                rejecter reject: RCTPromiseRejectBlock) -> Void {
-    resolve(a*b)
+  @objc func abort(notification: NSNotification) {
+    let funcName = TAG + ".abort()"
+    print(funcName)
+    print("  Notification: ", notification)
+    //Player
+    if (_audioPlayer != nil) {
+      _audioPlayer.pause()
+      removePeriodicTimeObserver()
+      _audioPlayer = nil
+      sendPlayStopEvent(playStopCode:PlayStopCode.Error)
+    }
+    //Recorder
+    if (_audioRecorder != nil) {
+      _audioRecorder.stop()
+      _audioRecorder = nil
+      sendRecStopEvent(recStopCode:RecStopCode.Error)
+    }
+    if (_recordTimer != nil) {
+      _recordTimer!.invalidate()
+      _recordTimer = nil
+    }
   }
+
+
+  @objc func audioPlayerDidFinishPlaying(notification: NSNotification) {
+    let funcName = TAG + ".audioPlayerDidFinishPlaying()"
+    print(funcName)
+    removePeriodicTimeObserver()
+    _audioPlayer = nil
+    sendPlayStopEvent(playStopCode:PlayStopCode.MaxDurationReached)
+  }
+
+
+  func addPeriodicTimeObserver() {
+    let funcName = TAG + ".addPeriodicTimeObserver()"
+    print(funcName)
+    let timeScale = CMTimeScale(NSEC_PER_SEC)
+    let time = CMTime(seconds: _subscriptionDurationSec, preferredTimescale: timeScale)
+    _timeObserverToken = _audioPlayer.addPeriodicTimeObserver(forInterval: time, queue: .main) {_ in
+      if (self._audioPlayer != nil) {
+        self.sendPlayUpdateEvent(elapsedMs: (self._audioPlayerItem?.currentTime().seconds ?? 0) * 1000,
+                                 durationMs: (self._audioPlayerItem?.asset.duration.seconds ?? 1) * 1000,
+                                 isMuted: self._audioPlayer?.isMuted ?? false)
+      }
+    }
+  }
+
+
+  func removePeriodicTimeObserver() {
+    let funcName = TAG + ".removePeriodicTimeObserver()"
+    print(funcName)
+    if let timeObserverToken = _timeObserverToken {
+      _audioPlayer.removeTimeObserver(timeObserverToken)
+      _timeObserverToken = nil
+    }
+  }
+
 }

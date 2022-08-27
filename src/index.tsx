@@ -6,6 +6,8 @@ import {
   Platform,
 } from 'react-native'
 
+import to from 'await-to-js'
+
 const LINKING_ERROR =
   `The package 'rn-audio' doesn't seem to be linked. Make sure: \n\n` +
   Platform.select({ ios: "- You have run 'pod install'\n", default: '' }) +
@@ -21,7 +23,7 @@ const RnAudio = NativeModules.RnAudio ? NativeModules.RnAudio : new Proxy(
     }
   );
 
-export enum AudioSourceAndroidType {
+export enum AndroidAudioSourceId {
   DEFAULT = 0,
   MIC,
   VOICE_UPLINK,
@@ -32,11 +34,12 @@ export enum AudioSourceAndroidType {
   VOICE_COMMUNICATION,
   REMOTE_SUBMIX,
   UNPROCESSED,
+  VOICE_PERFORMANCE, //Added in API 29
   RADIO_TUNER = 1998,
   HOTWORD,
 }
 
-export enum OutputFormatAndroidType {
+export enum AndroidOutputFormatId {
   DEFAULT = 0,
   THREE_GPP,
   MPEG_4,
@@ -47,9 +50,12 @@ export enum OutputFormatAndroidType {
   OUTPUT_FORMAT_RTP_AVP,
   MPEG_2_TS,
   WEBM,
+  // Android doesn't actually offer WAV via MediaRecorder / OutputFormat.
+  // We're shoe-horning this in here, and recording to WAV via AudioRecord
+  WAV = 999           
 }
 
-export enum AudioEncoderAndroidType {
+export enum AndroidAudioEncoderId {
   DEFAULT = 0,
   AMR_NB,
   AMR_WB,
@@ -57,42 +63,50 @@ export enum AudioEncoderAndroidType {
   HE_AAC,
   AAC_ELD,
   VORBIS,
+  // Android doesn't actually offer linear PCM via MediaRecorder.AudioEncoder.
+  // We're shoe-horning this in here, and recording to WAV via AudioRecord
+  LPCM = 999         
 }
 
-export enum AVEncodingOption {
-  lpcm = 'lpcm',
-  ima4 = 'ima4',
-  aac = 'aac',
-  MAC3 = 'MAC3',
-  MAC6 = 'MAC6',
-  ulaw = 'ulaw',
-  alaw = 'alaw',
-  mp1 = 'mp1',
-  mp2 = 'mp2',
-  mp4 = 'mp4',
-  alac = 'alac',
-  amr = 'amr',
-  flac = 'flac',
-  opus = 'opus',
+export enum ByteDepthId {
+  ONE = 1,
+  TWO = 2
 }
 
-type AVEncodingType =
-  | AVEncodingOption.lpcm
-  | AVEncodingOption.ima4
-  | AVEncodingOption.aac
-  | AVEncodingOption.MAC3
-  | AVEncodingOption.MAC6
-  | AVEncodingOption.ulaw
-  | AVEncodingOption.alaw
-  | AVEncodingOption.mp1
-  | AVEncodingOption.mp2
-  | AVEncodingOption.mp4
-  | AVEncodingOption.alac
-  | AVEncodingOption.amr
-  | AVEncodingOption.flac
-  | AVEncodingOption.opus
+export enum NumberOfChannelsId {
+  ONE = 1,
+  TWO = 2
+}
 
-export enum AVModeIOSOption {
+export enum AppleAudioFormatId {
+  // See: https://stackoverflow.com/questions/6867994/what-are-the-formats-supported-in-avaudiorecorder-for-recording-sound
+  // (8/17/2022) According to https://developer.apple.com/documentation/avfaudio/avaudiorecorder/1388386-init
+  // AVAudioRecorder.init(url: settings) only supports 
+  //   kAudioFormatLinearPCM
+  //   kAudioFormatMPEG4AAC
+  //   kAudioFormatAppleLossless
+  //   kAudioFormatAppleIMA4
+  //   kAudioFormatiLBC
+  //   kAudioFormatULaw
+  lpcm = 'lpcm',  // kAudioFormatLinearPCM
+  aac = 'aac',    // kAudioFormatMPEG4AAC
+  mp4 = 'mp4',    // kAudioFormatMPEG4AAC
+  alac = 'alac',  // kAudioFormatAppleLossless
+  ilbc = 'ilbc',   // kAudioFormatiLBC
+  ulaw = 'ulaw',  // kAudioFormatULaw
+  //Possibly unsupported by AvAudioRecorder (8/17/2022):
+  ima4 = 'ima4',  // kAudioFormatAppleIMA4
+  MAC3 = 'MAC3',  // kAudioFormatMACE3
+  MAC6 = 'MAC6',  // kAudioFormatMACE6
+  alaw = 'alaw',  // kAudioFormatALaw
+  mp1 = 'mp1',    // kAudioFormatMPEGLayer1
+  mp2 = 'mp2',    // kAudioFormatMPEGLayer2
+  amr = 'amr',    // kAudioFormatAMR
+  flac = 'flac',  // kAudioFormatFLAC
+  opus = 'opus',  // kAudioFormatOpus
+}
+
+export enum AppleAVAudioSessionModeId {
   gamechat = 'gamechat',
   measurement = 'measurement',
   movieplayback = 'movieplayback',
@@ -103,17 +117,7 @@ export enum AVModeIOSOption {
   voiceprompt = 'voiceprompt',
 }
 
-export type AVModeIOSType =
-  | AVModeIOSOption.gamechat
-  | AVModeIOSOption.measurement
-  | AVModeIOSOption.movieplayback
-  | AVModeIOSOption.spokenaudio
-  | AVModeIOSOption.videochat
-  | AVModeIOSOption.videorecording
-  | AVModeIOSOption.voicechat
-  | AVModeIOSOption.voiceprompt
-
-export enum AVEncoderAudioQualityIOSType {
+export enum AppleAVEncoderAudioQualityId {
   min = 0,
   low = 32,
   medium = 64,
@@ -121,88 +125,107 @@ export enum AVEncoderAudioQualityIOSType {
   max = 127,
 }
 
-export enum AVLinearPCMBitDepthKeyIOSType {
-  'bit8' = 8,
-  'bit16' = 16,
-  'bit24' = 24,
-  'bit32' = 32,
+export enum AppleAVLinearPCMBitDepthId {
+  bit8 = 8,
+  bit16 = 16,
+  bit24 = 24,
+  bit32 = 32,
 }
 
-export interface AudioSet {
-  AVSampleRateKeyIOS?: number,
-  AVFormatIDKeyIOS?: AVEncodingType,
-  AVModeIOS?: AVModeIOSType,
-  AVNumberOfChannelsKeyIOS?: number,
-  AVEncoderAudioQualityKeyIOS?: AVEncoderAudioQualityIOSType,
-  AudioSourceAndroid?: AudioSourceAndroidType,
-  AVLinearPCMBitDepthKeyIOS?: AVLinearPCMBitDepthKeyIOSType,
-  AVLinearPCMIsBigEndianKeyIOS?: boolean,
-  AVLinearPCMIsFloatKeyIOS?: boolean,
-  AVLinearPCMIsNonInterleavedIOS?: boolean,
-  OutputFormatAndroid?: OutputFormatAndroidType,
-  AudioEncoderAndroid?: AudioEncoderAndroidType,
-  AudioEncodingBitRateAndroid?: number,
-  AudioSamplingRateAndroid?: number,
+export enum PlayerState {
+  Playing = "Playing",
+  Paused = "Paused",
+  Stopped = "Stopped"
+}
+
+export enum RecorderState {
+  Recording = "Recording",
+  Paused = "Paused",
+  Stopped = "Stopped"
+}
+
+
+export interface RecordingOptions {
+  
+  audioFileNameOrPath?: string,
+  recMeteringEnabled?: boolean,
+  maxRecDurationSec?: number,
+  sampleRate?: number,
+  numChannels?: NumberOfChannelsId,
+  encoderBitRate?: number,
+  lpcmByteDepth?: ByteDepthId,
+  
+  //Apple-specific
+  appleAudioFormatId?: AppleAudioFormatId,
+  appleAVAudioSessionModeId?: AppleAVAudioSessionModeId,
+  //Apple encoded/compressed-specific
+  appleAVEncoderAudioQualityId?: AppleAVEncoderAudioQualityId,
+  //Apple LPCM/WAV-specific
+  appleAVLinearPCMIsBigEndian?: boolean,
+  appleAVLinearPCMIsFloatKeyIOS?: boolean,
+  appleAVLinearPCMIsNonInterleaved?: boolean,
+
+  //Android-specific
+  androidAudioSourceId?: AndroidAudioSourceId,
+  androidOutputFormatId?: AndroidOutputFormatId,
+  androidAudioEncoderId?: AndroidAudioEncoderId,
+  //Android encoded/compressed-specific
+  //(None)
 }
 
 enum EventId {
-  RECORDBACK = "rn-recordback",
-  PLAYBACK = "rn-playback",
-  STOPPAGE = "rn-stoppage"
+  RecStop = "RecStop",
+  PlayStop = "PlayStop",
+  RecUpdate = "RecUpdate",
+  PlayUpdate = "PlayUpdate",
 }
 
-enum StopCode {
-  USER_REQUEST = "user-request",
-  MAX_RECORDING_DURATION_REACHED = "max-recording-duration-reached",
-  ERROR = "error",
+enum RecStopCode {
+  Requested = "Requested",  // By user or app; not due to error or timeout
+  MaxDurationReached = "MaxDurationReached",
+  Error = "Error",
 }
 
-export type StoppageType = {
-  stopCode: StopCode,
+enum PlayStopCode {
+  Requested = "Requested",  // By user or app; not due to error or timeout
+  MaxDurationReached = "MaxDurationReached",
+  Error = "Error",
 }
 
-export type RecordBackType = {
-  isRecording?: boolean,
-  currentPosition: number,
-  currentMetering?: number,
+export type RecStopMetadata = {
+  audioFilePath?: string,
+  recStopCode: RecStopCode,
 }
 
-export type PlayBackType = {
-  isMuted?: boolean,
-  currentPosition: number,
-  duration: number,
+export type PlayStopMetadata = {
+  audioFilePath?: string,
+  playStopCode: PlayStopCode,
 }
 
+export type RecUpdateMetadata = {
+  isRecording: boolean,
+  recElapsedMs: number,
+  recMeterLevelDb?: number,
+}
 
-interface RequestedWavParams {
-  sampleRate: number,
-  numChannels: number,
-  byteDepth: number
+export type PlayUpdateMetadata = {
+  isMuted: boolean,
+  playElapsedMs: number,
+  playDurationMs: number,
 }
 
 interface StartPlayerArgs {
-  uri?: string,
+  fileNameOrPathOrURL?: string,
   httpHeaders?: Record<string, string>,
-  playbackCallback?: (e: PlayBackType) => void
-  playbackVolume?: number 
+  playUpdateCallback?: ((playUpdateMetadata: PlayUpdateMetadata) => void) | null
+  playStopCallback?: ((playStopMetadata: PlayStopMetadata) => void) | null
+  playVolume?: number 
 }
 
 interface StartRecorderArgs {
-  audioSet?: AudioSet,
-  uri?: string,
-  meteringEnabled?: boolean,
-  maxRecordingDurationSec?: number,
-  recordingCallback?: ((recordingMeta: RecordBackType) => void) | null
-  stoppageCallback?: ((stoppageMeta: StoppageType) => void) | null
-}
-
-interface StartWavRecorderArgs {
-  requestedWavParams: RequestedWavParams,
-  path?: string,
-  meteringEnabled?: boolean,
-  maxRecordingDurationSec?: number,
-  recordingCallback?: ((recordingMeta: RecordBackType) => void) | null
-  stoppageCallback?: ((stoppageMeta: StoppageType) => void) | null
+  recordingOptions: RecordingOptions,
+  recUpdateCallback?: ((recUpdateMetadata: RecUpdateMetadata) => void) | null
+  recStopCallback?: ((recStopMetadata: RecStopMetadata) => void) | null
 }
 
 const ilog = console.log
@@ -215,188 +238,412 @@ const pad = (num: number): string => {
   return ('0' + num).slice(-2)
 }
 
+const DEFAULT_WAV_FILE_NAME = 'recording.wav'
+const DEFAULT_FILE_NAME_PLACEHOLDER = 'DEFAULT'  //Keep snyced w/ native implementations
+
 export class Audio {
-
-  private _isRecording: boolean
-  private _isPlaying: boolean
-  private _hasPaused: boolean
-  private _hasPausedRecord: boolean
-  private _recorderSubscription: EmitterSubscription | null
-  private _playerSubscription: EmitterSubscription | null
-  private _stoppageSubscription: EmitterSubscription | null
-  private _playerCallback: ((event: PlayBackType) => void) | null
-
+  private _playUpdateCallback: ((playUpdateMetadata: PlayUpdateMetadata) => void) | null
+  private _recUpdateSubscription: EmitterSubscription | null
+  private _recStopSubscription: EmitterSubscription | null
+  private _playUpdateScription: EmitterSubscription | null
+  private _playStopSubscription: EmitterSubscription | null
   constructor() {
-    this._isRecording = false
-    this._isPlaying = false
-    this._hasPaused = false
-    this._hasPausedRecord = false
-    this._recorderSubscription = null
-    this._playerSubscription = null
-    this._stoppageSubscription = null
-    this._playerCallback = null
+    this._playUpdateCallback = null
+    this._recStopSubscription = null
+    this._recUpdateSubscription = null
+    this._playUpdateScription = null
+    this._playStopSubscription = null
+  }
+
+  resolveAndValidateRecordingOptions = async (recordingOptions:RecordingOptions): Promise<boolean> => {
+
+    // This function is FAR from complete. 
+    // Currently, it mainly helps to ensure successful wav file recording.
+
+    // Useful for the future, re: Android:
+    //  https://developer.android.com/guide/topics/media/media-formats
+
+    ilog('index.resolveAndValidateRecordingOptions()')
+    
+    const ro = recordingOptions
+    var lcFileNameOrPath = ro.audioFileNameOrPath?.toLowerCase()
+
+    ilog('Validating recording options...')
+
+    let res = true;  // Default to valid
+    let errMsgs:String[] = [] 
+
+    //Allow fully-default set of options
+    if (recordingOptions === {}) {
+      return res;
+    }
+
+    //INDEPENDENT parameter coercion/validation
+    //++++++++++++++++++++
+
+    //Coercing empty numChannels
+    if (ro.numChannels === undefined) {
+      ilog('Coercing (empty) numChannels to 1')
+      ro.numChannels = 1
+    }
+
+    //Coercing empty lpcmByteDepth
+    if (ro.lpcmByteDepth === undefined) {
+      ilog('Coercing (empty) lpcmByteDepth to 2')
+      ro.lpcmByteDepth = ByteDepthId.TWO
+    }
+
+    //Coercing empty sample rate
+    if (ro.sampleRate === undefined) {
+      ilog('Coercing (empty) sampleRate to 44100')
+      ro.sampleRate = 44100
+    }
+
+    //File name/path validation
+    if (lcFileNameOrPath && 
+      lcFileNameOrPath !== DEFAULT_FILE_NAME_PLACEHOLDER) {
+      //If file name/path doesn't have a .suffix
+      if (lcFileNameOrPath.includes('.') === false) {
+        const errMsg = 'File name/path must end with .<suffix>'
+        elog(errMsg); errMsgs.push(errMsg)
+        res = false
+      }
+      //If file name/path is accidentally a URL
+      if (lcFileNameOrPath.startsWith('http:') || 
+          lcFileNameOrPath.startsWith('https:')) {
+        const errMsg = 'Recording file name/path cannot be a URL.'
+        elog(errMsg); errMsgs.push(errMsg)
+        res = false
+      }
+    }
+
+    //numChannels validation
+    if (ro.numChannels !== undefined && (ro.numChannels < 1 || ro.numChannels > 2)) {
+      const errMsg = 'Number of channels must be > 0 and <= 2.'
+      elog(errMsg); errMsgs.push(errMsg)
+      res = false
+    }
+
+    //lpcmByteDepth validation
+    if (ro.lpcmByteDepth !== undefined && (ro.lpcmByteDepth < 1 || ro.lpcmByteDepth > 2)) {
+      const errMsg = 'lpcmByteDepth must be >0 and <= 2.'
+      elog(errMsg); errMsgs.push(errMsg)
+      res = false
+    }
+    //--------------------
+
+    //COMBINED parameter coercion / validation
+    //++++++++++++++++++++
+
+    if (ro.androidOutputFormatId === AndroidOutputFormatId.WAV &&
+        ro.androidAudioEncoderId === undefined) {
+      ro.androidAudioEncoderId = AndroidAudioEncoderId.LPCM
+      ilog('androidOutputFormatId is for WAV; coercing (empty) androidAudioEncoderId accordingly')
+    }
+
+    if (ro.androidAudioEncoderId === AndroidAudioEncoderId.LPCM &&
+        ro.androidOutputFormatId === undefined) {
+      ro.androidOutputFormatId = AndroidOutputFormatId.WAV
+      ilog('androidAudioEncoderId is for LPCM; coercing (empty) androidOutputFormatId accordingly for WAV')
+    }
+
+    //If file name/path is undefined...
+    if (lcFileNameOrPath === undefined) {
+      //If format/encoding unambiguously indicate .WAV...
+      if ((Platform.OS === 'android' && 
+           ro.androidAudioEncoderId === AndroidAudioEncoderId.LPCM && 
+           ro.androidOutputFormatId === AndroidOutputFormatId.WAV) ||
+          (Platform.OS === 'ios' &&
+           ro.appleAudioFormatId === AppleAudioFormatId.lpcm)) {
+        ro.audioFileNameOrPath = DEFAULT_WAV_FILE_NAME
+        lcFileNameOrPath = ro.audioFileNameOrPath.toLowerCase()  // Update lowercase version
+        ilog('Format/encoding are for .wav; coercing (empty) audioFileNameOrPath to: ', ro.audioFileNameOrPath)
+      }
+    }
+
+    //If file name/path ends with '.wav'...
+    if (lcFileNameOrPath?.endsWith('.wav')) {
+
+      //Coerce empty format/encoding/sampling params to match .wav file name/path
+      const fileNameOrPathEndsWithWavPrefix = 'File name/path ends with \'.wav\'; '
+      if (ro.androidAudioEncoderId === undefined) {
+        ro.androidAudioEncoderId = AndroidAudioEncoderId.LPCM
+        ilog(fileNameOrPathEndsWithWavPrefix + 'coercing (empty) androidAudioEncoderId accordingly.')
+      }
+      if (ro.androidOutputFormatId === undefined) {
+        ro.androidOutputFormatId = AndroidOutputFormatId.WAV
+        ilog(fileNameOrPathEndsWithWavPrefix + 'coercing (empty) androidOutputFormat accordingly.')
+      }  
+      if (ro.appleAudioFormatId === undefined) {
+        ro.appleAudioFormatId = AppleAudioFormatId.lpcm
+        ilog(fileNameOrPathEndsWithWavPrefix + 'coercing (empty) appleAudioFormatId accordingly.')
+      }
+      if (ro.lpcmByteDepth === undefined) {
+        ro.lpcmByteDepth = ByteDepthId.TWO
+        ilog(fileNameOrPathEndsWithWavPrefix + 'coercing (empty) lpcmByteDepth accordingly.')
+      }
+
+      //Validate supplied format/encoding params against .wav file name/path
+      const fileIsWavPrefixStr = 'File name/path ends with \'.wav\', but '
+      if (Platform.OS === 'android') {
+        if (ro.androidOutputFormatId !== undefined && 
+            ro.androidOutputFormatId !== AndroidOutputFormatId.WAV) {
+          const errMsg = fileIsWavPrefixStr + 'androidOutputFormatId is: ' + ro.androidOutputFormatId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+        if (ro.androidAudioEncoderId !== undefined && 
+            ro.androidAudioEncoderId !== AndroidAudioEncoderId.LPCM) {
+          const errMsg = fileIsWavPrefixStr + 'androidAudioEncoderId is: ' + ro.androidAudioEncoderId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+      }
+      else if (Platform.OS === 'ios') {
+        if (ro.appleAudioFormatId !== AppleAudioFormatId.lpcm) {
+          const errMsg = fileIsWavPrefixStr + 'appleAudioFormatId is: ' + ro.appleAudioFormatId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+      }
+    } 
+
+    //If file name/path exists, and DOESN'T end with .wav, bug format / encoding indicate wav...
+    if (lcFileNameOrPath !== undefined && (lcFileNameOrPath.endsWith('.wav') === false)) {
+      const fileIsntWavPrefixStr = 'File name/path doesn\'t end with .wav, but '
+      if (Platform.OS === 'android') {
+        if (ro.androidOutputFormatId === AndroidOutputFormatId.WAV) {
+          const errMsg = fileIsntWavPrefixStr + 'androidOutputFormatId is: ' + ro.androidOutputFormatId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+        if (ro.androidAudioEncoderId === AndroidAudioEncoderId.LPCM) {
+          const errMsg = fileIsntWavPrefixStr + 'androidAudioEncoderId is: ' + ro.androidAudioEncoderId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }
+      } 
+      if (Platform.OS === 'ios') {
+        if (ro.appleAudioFormatId === AppleAudioFormatId.lpcm) {
+          const errMsg = fileIsntWavPrefixStr + 'appleAudioFormatId is: ' + ro.appleAudioFormatId
+          elog(errMsg); errMsgs.push(errMsg)
+          res = false
+        }  
+      }
+    }
+    //--------------------
+    
+    return res ? Promise.resolve(res) : Promise.reject('Recording Option resolution errors: ' + errMsgs.toString())
+  }
+
+  isWavAndAndroid = (path:string|undefined):boolean => {
+    ilog('index.isWavAndAndroid()')
+    return (
+      Platform.OS === 'android' && 
+      typeof(path)!== 'undefined' &&
+      path.toLowerCase().endsWith('.wav')
+    )
   }
 
   mmss = (secs: number): string => {
     let minutes = Math.floor(secs / 60)
-
     secs = secs % 60
     minutes = minutes % 60
-
     return pad(minutes) + ':' + pad(secs)
   }
 
-  mmssss = (milisecs: number): string => {
-    const secs = Math.floor(milisecs / 1000)
+  mmssss = (ms: number): string => {
+    const secs = Math.floor(ms / 1000)
     const minutes = Math.floor(secs / 60)
     const seconds = secs % 60
-    const miliseconds = Math.floor((milisecs % 1000) / 10)
-
+    const miliseconds = Math.floor((ms % 1000) / 10)
     return pad(minutes) + ':' + pad(seconds) + ':' + pad(miliseconds)
   }
 
-  /**
-   * Set listener from native module for recorder.
-   * @param { (recordingMeta: RecordBackType) => void } callback parameter
-   * @returns { void }
-  */
-  private addRecordBackListener = (
-    callback: (recordingMeta: RecordBackType) => void,
+  private addRecUpdateCallback = (
+    callback: (recUpdateMetadata: RecUpdateMetadata) => void,
   ): void => {
+    const funcName = 'index.addRecUpdateCallback()'
+    ilog(funcName)
+    this._recUpdateSubscription?.remove()
     if (Platform.OS === 'android') {
-      this._recorderSubscription = DeviceEventEmitter.addListener(
-        EventId.RECORDBACK,
-        callback,
-      )
+      this._recUpdateSubscription = DeviceEventEmitter.addListener(EventId.RecUpdate, callback)
     } else {
       const myModuleEvt = new NativeEventEmitter(RnAudio)
-      this._recorderSubscription = myModuleEvt.addListener(
-        EventId.RECORDBACK,
-        callback,
-      )
+      this._recUpdateSubscription = myModuleEvt.addListener(EventId.RecUpdate, callback)
+    }
+  }
+  private removeRecUpdateCallback = (): void => {
+    const funcName = 'index.removeRecUpdateCallback()'
+    ilog(funcName)
+    if (this._recUpdateSubscription) {
+      this._recUpdateSubscription.remove()
+      this._recUpdateSubscription = null
     }
   }
 
-  /**
-   * Remove listener for recorder.
-   * @returns {void}
-   */
-  private removeRecordBackListener = (): void => {
-    if (this._recorderSubscription) {
-      this._recorderSubscription.remove()
-      this._recorderSubscription = null
-    }
-  }
-
-  /**
-   * Set listener from native module for stoppage.
-   * @param { (stoppageMeta: StoppageType) => void } callback parameter. The callback MUST 
-   * @returns { void }
-   */
-   private addStoppageListener = (
-    callback: ((stoppageMeta: StoppageType) => void) | null,
+  private addRecStopCallback = (
+    callback: ((recStopMetadata: RecStopMetadata) => void) | null,
   ): void => {
-
-    const augmentedCallback = (stoppageMeta: StoppageType) => {
-      this.removeRecordBackListener()
-      this.removeStoppageListener()
-      this._isRecording = false
-      if (callback) {
-        callback(stoppageMeta)
-      }
+    const funcName = 'index.addRecStopCallback()'
+    ilog(funcName)
+    //Ensure recording-related callbacks get removed when recording stops
+    const augmentedCallback = (recStopMetadata: RecStopMetadata) => {
+      this.removeRecUpdateCallback()
+      this.removeRecStopCallback()
+      if (callback) { callback(recStopMetadata) }
     }
-
+    this._recStopSubscription?.remove()
     if (Platform.OS === 'android') {
-      this._stoppageSubscription = DeviceEventEmitter.addListener(
-        EventId.STOPPAGE,
-        augmentedCallback,
-      )
+      this._recStopSubscription = DeviceEventEmitter.addListener(EventId.RecStop, augmentedCallback)
     } else {
       const myModuleEvt = new NativeEventEmitter(RnAudio)
-      this._stoppageSubscription = myModuleEvt.addListener(
-        EventId.STOPPAGE,
-        augmentedCallback,
-      )
+      this._recStopSubscription = myModuleEvt.addListener(EventId.RecStop, augmentedCallback)
+    }
+  }
+  private removeRecStopCallback = (): void => {
+    const funcName = 'index.removeRecStopCallback()'
+    ilog(funcName)
+    if (this._recStopSubscription) {
+      this._recStopSubscription.remove()
+      this._recStopSubscription = null
     }
   }
 
-  /**
-   * Remove listener for recorder.
-   * @returns {void}
-   */
-  private removeStoppageListener = (): void => {
-    if (this._stoppageSubscription) {
-      this._stoppageSubscription.remove()
-      this._stoppageSubscription = null
-    }
-  }
-
-  /**
-   * Set listener from native module for player.
-   * @param {(playbackMeta: PlayBackType) => void} callback - Callback parameter
-   * @returns {void}
-   */
-  private addPlayBackListener = (
-    callback: (playbackMeta: PlayBackType) => void,
+  private addPlayUpdateCallback = (
+    callback: ((playUpdateMetadata: PlayUpdateMetadata) => void) | null,
   ): void => {
-    this._playerCallback = callback
+    const funcName = 'index.addPlayUpdateCallback()'
+    ilog(funcName)
+    this._playUpdateScription?.remove()
+    if (!callback) { return }
+    if (Platform.OS === 'android') {
+      this._playUpdateScription = DeviceEventEmitter.addListener(EventId.PlayUpdate, callback)
+    } 
+    else {
+      const myModuleEvt = new NativeEventEmitter(RnAudio)
+      this._playUpdateScription = myModuleEvt.addListener(EventId.PlayUpdate, callback)
+    }
+  }
+  private removePlayUpdateCallback = (): void => {
+    const funcName = 'index.removePlayUpdateCallback()'
+    ilog(funcName)
+    if (this._playUpdateScription) {
+      this._playUpdateScription.remove()
+      this._playUpdateScription = null
+    }
+  }
+  
+  private addPlayStopCallback = (
+    callback: ((playStopMetadata: PlayStopMetadata) => void) | null,
+  ): void => {
+    const funcName = 'index.addPlayStopCallback()'
+    ilog(funcName)
+    //Ensure play-related callbacks get removed when playing stops
+    const augmentedCallback = (playStopMetadata: PlayStopMetadata) => {
+      this.removePlayUpdateCallback()
+      this.removePlayStopCallback()
+      if (callback) { callback(playStopMetadata) }
+    }
+    this._playStopSubscription?.remove()
+    if (Platform.OS === 'android') {
+      this._playStopSubscription = DeviceEventEmitter.addListener(EventId.PlayStop, augmentedCallback)
+    } else {
+      const myModuleEvt = new NativeEventEmitter(RnAudio)
+      this._playStopSubscription = myModuleEvt.addListener(EventId.PlayStop, augmentedCallback)
+    }
+  }
+  private removePlayStopCallback = (): void => {
+    const funcName = 'index.removePlayStopCallback()'
+    ilog(funcName)
+    if (this._playStopSubscription) {
+      this._playStopSubscription.remove()
+      this._playStopSubscription = null
+    }
   }
 
   /**
-   * remove listener for player.
-   * @returns {void}
+   * Resolves to the current player state.
+   * @returns {Promise<PlayerState>}
    */
-  private removePlayBackListener = (): void => {
-    this._playerCallback = null
+  getPlayerState = async (): Promise<PlayerState> => {
+    const funcName = 'index.getPlayerState(): ' + RnAudio.getPlayerState()
+    ilog(funcName)
+    return await RnAudio.getPlayerState()
   }
 
   /**
-   * Returns recording state
-   * @returns {Promise<boolean>}
+   * Resolves to the current recorder state.
+   * @returns {Promise<RecorderState>}
    */
-   isRecording = async (): Promise<boolean> => {
-    return this._isRecording
+  getRecorderState = async (): Promise<RecorderState> => {
+    const funcName = 'index.getRecorderState()'
+    ilog(funcName)
+    return await RnAudio.getRecorderState()
+  }
+
+  private resetRecorder = async (dontCallStop = false) => {
+    const funcName = 'index.resetRecorder()'
+    ilog(funcName)
+    try {
+      const recorderState = await this.getRecorderState()
+      ilog(funcName + ' - recorderState: ' + recorderState)
+      if (recorderState != RecorderState.Stopped && dontCallStop === false) {
+        ilog(funcName + ' - calling stopRecorder()')
+        await this.stopRecorder()  
+      }  
+    }
+    catch (e) {
+      const errStr = funcName + ' - ' + e
+      elog(errStr)
+    }
+    finally {
+      this.removeRecUpdateCallback()
+      this.removeRecStopCallback()
+    }
   }
 
   /**
-   * start recording with param.
-   * @param {StartRecorderArgs} startRecorder params.
+   * Start recording
+   * @param {StartRecorderArgs} startRecorderArgs param.
    * @returns {Promise<string>}
    */
   startRecorder = async ({
-    audioSet,
-    uri = 'DEFAULT',
-    meteringEnabled = false,
-    maxRecordingDurationSec = 4.0,
-    recordingCallback,
-    stoppageCallback = null
-  }:StartRecorderArgs): Promise<string> => {
+    recordingOptions,
+    recUpdateCallback,
+    recStopCallback = null
+  }:StartRecorderArgs): Promise<object|string> => {
+    const funcName = 'index.startRecorder()'
+    ilog(funcName)
 
-    ilog('index.startRecorder()')
+    const [resolveErr, ] = await to(this.resolveAndValidateRecordingOptions(recordingOptions))
+    if (resolveErr) {
+      return Promise.reject(funcName + '- Recording options don\'t validate: ' + resolveErr)
+    }
+    
+    ilog('  index.startRecorder() - resetting recorder in preparation')
+    await this.resetRecorder()
+    if (await this.getRecorderState() !== RecorderState.Stopped) {
+      return Promise.reject(funcName + ' - Unable to reset recorder')
+    }
+    
+    // Add callbacks
+    if (recUpdateCallback) {
+      this.addRecUpdateCallback(recUpdateCallback)
+    }
+    this.addRecStopCallback(recStopCallback) //MUST call - even recStopCallback is null
 
-    if (!this._isRecording) {
-      this._isRecording = true
-      this._hasPausedRecord = false
-
-      if (recordingCallback) {
-        ilog('   calling index.addRecordBackListener()')
-        this.addRecordBackListener(recordingCallback)
-      }
-
-      ilog('   calling index.addStoppageListener()')
-      //MUST add stoppage listener, even if its null
-      this.addStoppageListener(stoppageCallback)
-   
-      ilog('   calling RNWRP.startRecorder()')
-      return RnAudio.startRecorder(
-        audioSet,
-        uri,
-        meteringEnabled,
-        maxRecordingDurationSec
-      )
+    // Call RnAudio.startRecorder
+    const [err, res] = await to<string>(RnAudio.startRecorder(recordingOptions))
+    if (err) {
+      const errStr = funcName + ' - ' + err
+      elog(errStr)
+      await this.resetRecorder()
+      return Promise.reject(errStr)
     }
 
-    return 'startRecorder: Already recording.'
+    ilog(funcName + ' - Result: ', res)
+    return res
   }
 
   /**
@@ -404,16 +651,22 @@ export class Audio {
    * @returns {Promise<string>}
    */
   pauseRecorder = async (): Promise<string> => {
-    ilog('index.pauseRecorder()')
-
-    if (this._isRecording && !this._hasPausedRecord) {
-      this._hasPausedRecord = true
-
-      ilog('   calling RNWRP.pauseRecorder()')
-      return RnAudio.pauseRecorder()
+    const funcName = 'index.pauseRecorder()'
+    ilog(funcName)
+    const recorderState = await this.getRecorderState()
+    if (recorderState !== RecorderState.Recording) {
+      return funcName + ' - No need to pause; recorder ' + 
+          ((recorderState === RecorderState.Stopped) ? 'isn\'t recording.' : 'is already paused.')
     }
-
-    return 'pauseRecorder: ' + (!this._isRecording ? 'Wasn\'t recording.' : 'Already paused.')
+    const [err, res] = await to<string>(RnAudio.pauseRecorder())
+    if (err) {
+      const errStr = funcName + ' - ' + err
+      elog(errStr)
+      await this.resetRecorder()
+      return Promise.reject(errStr)
+    }
+    ilog(funcName + ' - Result: ', res)
+    return res
   }
 
   /**
@@ -421,47 +674,62 @@ export class Audio {
    * @returns {Promise<string>}
    */
   resumeRecorder = async (): Promise<string> => {
-    ilog('index.resumeRecorder()')
-    if (this._isRecording && this._hasPausedRecord) {
-      this._hasPausedRecord = false
-
-      ilog('   Calling RNWRP.removeRecordBackListener()')
-      return RnAudio.resumeRecorder()
+    const funcName = 'index.resumeRecorder()'
+    ilog(funcName)
+    const recorderState = await this.getRecorderState()
+    if (recorderState !== RecorderState.Paused) {
+      return funcName + ' - No need to resume; recorder isn\'t ' + 
+          ((recorderState === RecorderState.Stopped) ? 'recording' : 'paused')
     }
-
-    return 'resumeRecorder: ' + (!this._isRecording ? 'Wasn\'t recording.' : 'Wasn\'t paused.')
+    const [err, res] = await to<string>(RnAudio.resumeRecorder())
+    if (err) {
+      const errStr = funcName + ' - ' + err
+      elog(errStr)
+      await this.resetRecorder()
+      return Promise.reject(errStr)
+    }
+    ilog(funcName + ' - Result: ', res)
+    return res
   }
+
 
   /**
    * stop recording.
    * @returns {Promise<string>}
    */
-  stopRecorder = async (): Promise<string> => {
-    ilog('index.stopRecorder()')
-    if (this._isRecording) {
-      this._isRecording = false
-      this._hasPausedRecord = false
-
-      ilog('   Calling index.removeRecordBackListener()')
-      this.removeRecordBackListener()
-
-      ilog('   Calling index.removeStoppageListener()')
-      this.removeStoppageListener()
-
-      ilog('   Calling RNWRP.stopRecorder()')
-      return RnAudio.stopRecorder()
+  stopRecorder = async (): Promise<object|string> => {
+    const funcName = 'index.stopRecorder()'
+    ilog(funcName)
+    this.removeRecUpdateCallback()
+    //NOTE: RecStopCallback gets removed when recStopCallback fires; see addRecStopCallback
+    const [err, res] = await to<object|string>(RnAudio.stopRecorder())
+    if (err) {
+      const errStr = funcName + ' - ' + err
+      elog(errStr)
+      await this.resetRecorder(true)
+      return Promise.reject(errStr)
     }
 
-    return 'stopRecorder: Wasn\'t recording (or was called twice).'
+    ilog(funcName + ' - Result: ', res)
+    return res
   }
 
-  playerCallback = (event: PlayBackType): void => {
-    if (this._playerCallback) {
-      this._playerCallback(event)
+  private resetPlayer = async () => {
+    const funcName = 'index.resetPlayer()'
+    ilog(funcName)
+    try {
+      const playerState = await this.getPlayerState()
+      if (playerState !== PlayerState.Stopped) {
+        ilog(funcName + ' - calling index.stopPlayer()')
+        await this.stopPlayer()
+      }
     }
-
-    if (event.currentPosition === event.duration) {
-      this.stopPlayer()
+    catch (e) {
+      elog(funcName + ' - ' + e)
+    }
+    finally {
+      this.removePlayUpdateCallback()
+      this._playUpdateCallback = null
     }
   }
 
@@ -472,52 +740,46 @@ export class Audio {
    * @returns {Promise<string>}
    */
   startPlayer = async ({
-    uri = 'DEFAULT',
+    fileNameOrPathOrURL = DEFAULT_FILE_NAME_PLACEHOLDER,
     httpHeaders,
-    playbackCallback,
-    playbackVolume = 1.0
+    playUpdateCallback,
+    playStopCallback = null,
+    playVolume: playbackVolume = 1.0
   }:StartPlayerArgs): Promise<string> => {
+    const funcName = 'index.startPlayer()'
+    ilog(funcName)
 
-    ilog('index.startPlayer()')
-
-    if (playbackCallback) {
-      ilog('   Calling index.addPlayBackListener()')
-      this.addPlayBackListener(playbackCallback)
-    }
-    else {
-      ilog('   Calling index.removePlayBackListener()')
-      this.removePlayBackListener()
-    }
-
-    if (!this._playerSubscription) {
-
-      ilog('   adding callback.')
-
-      if (Platform.OS === 'android') {
-        this._playerSubscription = DeviceEventEmitter.addListener(
-          EventId.PLAYBACK,
-          this.playerCallback,
-        )
-      } 
-      else {
-        const myModuleEvt = new NativeEventEmitter(RnAudio)
-        this._playerSubscription = myModuleEvt.addListener(
-          EventId.PLAYBACK,
-          this.playerCallback,
-        )
+    //Basic validation of fileNameOrPathOrURL
+    const lcFileNameOrPathOrURL = fileNameOrPathOrURL.toLowerCase()
+    if (lcFileNameOrPathOrURL && 
+        lcFileNameOrPathOrURL !== DEFAULT_FILE_NAME_PLACEHOLDER) {
+      //If file name/path doesn't have a .suffix
+      if (lcFileNameOrPathOrURL.includes('.') === false) {
+        const errMsg = 'File name/path must end with .<suffix>'
+        elog(errMsg)
+        return Promise.reject(funcName + ' - ' + errMsg)
       }
     }
 
-    if (!this._isPlaying || this._hasPaused) {
-      this._isPlaying = true
-      this._hasPaused = false
-
-      ilog('   Calling RNWRP.startPlayer()')
-
-      return RnAudio.startPlayer(uri, httpHeaders, playbackVolume)  
+    await this.resetPlayer()
+    if (playUpdateCallback) {
+      this._playUpdateCallback = playUpdateCallback
+      this.addPlayUpdateCallback(playUpdateCallback)
     }
+    this.addPlayStopCallback(playStopCallback) //MUST call - even playStopCallback is null
 
-    return 'startPlayer: Already playing, or not paused'
+    ilog(funcName + ' - calling RnAudio.startPlayer()')
+    const [err, res] = await to<string>(
+        RnAudio.startPlayer(fileNameOrPathOrURL, httpHeaders, playbackVolume)
+    )
+    if (err) {
+      const errStr = funcName + ' - ' + err
+      elog(errStr)
+      await this.resetPlayer()
+      return Promise.reject(errStr)
+    }
+    ilog(funcName + ' - Result: ', res)
+    return res
   }
 
   /**
@@ -525,18 +787,24 @@ export class Audio {
    * @returns {Promise<string>}
    */
   pausePlayer = async (): Promise<string> => {
-    ilog('index.pausePlayer()')
-    if (!this._isPlaying) {
-      return 'pausePlayer: No audio playing to pause'
+    const funcName = 'index.pausePlayer()'
+    ilog(funcName)
+    const playerState = await this.getPlayerState()
+    ilog('  playerState: ' + playerState)
+    if (playerState !== PlayerState.Playing) {
+      return funcName + ' - No need to pause; player ' +
+        ((playerState === PlayerState.Stopped) ? 'isn\'t running' : 'is already paused')
     }
-
-    if (!this._hasPaused) {
-      this._hasPaused = true
-      ilog('   calling rnwrp.pausePlayer()')
-      return RnAudio.pausePlayer()
+    this.removePlayUpdateCallback()
+    const [err, res] = await to<string>(RnAudio.pausePlayer())
+    if (err) {
+      const errStr = funcName + ' - ' + err
+      elog(errStr)
+      await this.resetPlayer()
+      return Promise.reject(errStr)
     }
-
-    return 'pausePlayer: Audio already paused'
+    ilog(funcName + ' - Result: ', res)
+    return res  
   }
 
   /**
@@ -544,40 +812,44 @@ export class Audio {
    * @returns {Promise<string>}
    */
   resumePlayer = async (): Promise<string> => {
-    ilog('index.pausePlayer()')
-
-    if (!this._isPlaying) {
-      return 'resumePlayer: No audio playing to resume'
+    const funcName = 'index.resumePlayer()'
+    ilog(funcName)
+    const playerState = await this.getPlayerState()
+    ilog(funcName + ' - playerState:', playerState)
+    if (playerState !== PlayerState.Paused) {
+      return funcName + ' - No need to resume; player isn\'t ' + 
+          ((playerState === PlayerState.Stopped) ? 'playing' : 'paused')
     }
-
-    if (this._hasPaused) {
-      this._hasPaused = false
-
-      ilog('index.pausePlayer()')
-      return RnAudio.resumePlayer()
+    this.addPlayUpdateCallback(this._playUpdateCallback)
+    const [err, res] = await to<string>(RnAudio.resumePlayer())
+    if (err) {
+      const errStr = funcName + ' - Error: ' + err
+      elog(errStr)
+      await this.resetPlayer()
+      return Promise.reject(errStr)
     }
-
-    return 'resumePlayer: Audio already playing'
+    ilog(funcName + ' - Result: ', res)
+    return res
   }
 
   /**
-   * Stop playing.
+   * Stops player
    * @returns {Promise<string>}
    */
   stopPlayer = async (): Promise<string> => {
-    ilog('index.stopPlayer()')
-    if (this._isPlaying) {
-      this._isPlaying = false
-      this._hasPaused = false
-
-      ilog('   calling index.removePlayBackListener()')
-      this.removePlayBackListener()
-
-      ilog('   calling rnwrp.stopPlayer()')
-      return RnAudio.stopPlayer()
+    const funcName = 'index.stopPlayer()'
+    ilog(funcName)
+    this.removePlayUpdateCallback()
+    //NOTE: PlayStopCallback gets removed when playStopCallback fires; see addRecStopCallback
+    const [err, res] = await to<string>(RnAudio.stopPlayer())
+    if (err) {
+      const errStr = funcName + '- ' + err
+      elog(errStr)
+      await this.resetPlayer()
+      return Promise.reject(errStr)
     }
-
-    return 'stopPlayer: Already stopped playback'
+    ilog(funcName + ' - Result: ', res)
+    return res  
   }
 
   /**
@@ -587,140 +859,64 @@ export class Audio {
    * @returns {Promise<string>}
    */
   seekToPlayer = async (time: number): Promise<string> => {
-    ilog('index.seekToPlayer()')
-    ilog('   calling rnwrp.seekToPlayer()')
-    return RnAudio.seekToPlayer(time)
+    const funcName = 'index.seekToPlayer()'
+    ilog(funcName)
+    const playerState = await this.getPlayerState()
+    ilog(funcName + ' - playerState: ' + playerState)
+    if (playerState === PlayerState.Stopped) {
+      Promise.resolve(funcName + ' - Can\'t seek; player isn\'t playing')      
+    }
+    const [err, res] = await to<string>(RnAudio.seekToPlayer(time))
+    if (err) {
+      const errStr = funcName + ' - ' + err
+      elog(errStr)
+      return Promise.reject(errStr)
+    }
+    ilog(funcName + ' - Result: ', res)
+    return res
   }
 
   /**
-   * Sets playback volume.
-   * Android:
-   *  * MediaPlayer must exist before calling this! Consider using startPlayer's playbackVolume parameter instead
+   * Sets player volume; in the case of Android its a % relative to the current MediaVolume.
+   * 
+   * NOTE! For Android, MediaPlayer must exist before calling this.
+   * Consider using startPlayer's playbackVolume parameter instead
    *  * relative to 100% of Media Volume
    * @param {number} volume New volume (% of Media Volume) for pre-existing media player 
    * @returns {Promise<string>}
    */
-  setVolume = async (volume: number): Promise<string> => {
-     ilog('index.setVolume()')
+  setPlayerVolume = async (volume: number): Promise<string> => {
+     const funcName = 'index.setPlayerVolume()'
+     ilog(funcName)
      if (volume < 0 || volume > 1) {
-       throw new Error('Value of volume should be between 0.0 to 1.0')
+       return Promise.reject(funcName + 'Volume parameter should be between 0.0 to 1.0')
      }
-     ilog('   calling rnwrp.setVolume()')
-     return RnAudio.setVolume(volume)
+     const [err, res] = await to<string>(RnAudio.setPlayerVolume(volume))
+     if (err) {
+      const errStr = funcName + ' - ' + err
+      elog(errStr)
+      return Promise.reject(errStr)
+    }
+    ilog(funcName + ' - Result: ', res)
+    return res
   }
 
   /**
-   * Set subscription duration. Default is 0.5.
+   * Set subscription duration.
    * @param {number} sec subscription callback duration in seconds.
    * @returns {Promise<string>}
    */
   setSubscriptionDuration = async (sec: number): Promise<string> => {
-    ilog('index.setSubscriptionDuration()')
-    return RnAudio.setSubscriptionDuration(sec)
-  }
-
-  /**
-   * startWavRecorder
-   * @param {StartWavRecorderArgs} startWavRecordArgs
-   * @returns {Promise<string>}
-   */
-  startWavRecorder = async ({
-    requestedWavParams,
-    path = 'DEFAULT',
-    meteringEnabled = false,
-    maxRecordingDurationSec = 4.0,
-    recordingCallback,
-    stoppageCallback = null
-  }:StartWavRecorderArgs): Promise<string> => {
-    ilog('index.startWavRecorder()')
-    if (!this._isRecording) {
-
-      this._isRecording = true
-      this._hasPausedRecord = false
-
-      if (recordingCallback) {
-        ilog('   calling index.addRecordBackListener()')
-        this.addRecordBackListener(recordingCallback)
-      }
-
-      ilog('   calling index.addStoppageListener()')
-      //Must add stoppage listener; even if its null
-      this.addStoppageListener(stoppageCallback)
-
-      ilog('   calling rnwrp.startWavRecorder()')
-      return RnAudio.startWavRecorder(
-        requestedWavParams,
-        path,
-        meteringEnabled,
-        maxRecordingDurationSec
-      )
+    const funcName = 'index.setSubscriptionDuration()'
+    ilog(funcName)
+    const [err, res] = await to<string>(RnAudio.setSubscriptionDuration(sec))
+    if (err) {
+      const errStr = funcName + ' - ' + err
+      elog(errStr)
+      return Promise.reject(errStr)
     }
-
-    return 'startWavRecorder: Already recording' + (this._hasPausedRecord ? '; currently paused.' : '.')
-  }
-
-  /**
-   * Pause wav recording.
-   * @returns {Promise<string>}
-   */
-   pauseWavRecorder = async (): Promise<string> => {
-    ilog('index.pauseWavRecorder()')
-    ilog('   isRecording:', this._isRecording)
-    ilog('   isPaused:', this._isRecording)
-    if (this._isRecording && !this._hasPausedRecord) {
-      this._hasPausedRecord = true
-      ilog('   calling rnwrp.pauseWavRecorder()')
-      return RnAudio.pauseWavRecorder()
-    }
-
-    return 'pauseWavRecorder: ' + (!this._isRecording ? 'Wasn\'t recording.' : 'Already paused.')
-  }
-
-  /**
-   * Resume wav recording.
-   * @returns {Promise<string>}
-   */
-  resumeWavRecorder = async (): Promise<string> => {
-    ilog('index.resumeWavRecorder()')
-    if (this._isRecording && this._hasPausedRecord) {
-      this._hasPausedRecord = false
-      ilog('   calling rnwrp.resumeWavRecorder()')
-      return RnAudio.resumeWavRecorder()
-    }
-
-    return 'resumeWavRecorder: ' + (!this._isRecording ? 'Wasn\'t recording.' : 'Wasn\'t paused.')
-  }
-
-  /**
-   * stopWavRecorder
-   * @returns {Promise<string>}
-   */
-  stopWavRecorder = async (): Promise<string> => {
-    ilog('index.stopWavRecorder()')
-    if (this._isRecording) {
-
-      this._isRecording = false
-      this._hasPausedRecord = false
-
-      ilog('   calling index.removeRecordBackListener()')
-      this.removeRecordBackListener()
-
-      ilog('   calling index.removeStoppageListener()')
-      this.removeStoppageListener()
-
-      ilog('   calling rnwrp.stopWavRecorder()')
-      const res = RnAudio.stopWavRecorder()
-      return res
-    }
-
-    return 'stopWavRecorder: Wasn\'t recording (or was called multiple times).'
-  }
-
-
-
-  // ****
-  multiply = async (a: number, b: number): Promise<number> => {
-    return RnAudio.multiply(a, b);
+    ilog(funcName + ' - Result: ', res)
+    return res
   }
 
 }

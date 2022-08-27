@@ -367,8 +367,6 @@ PODS:
     - React-perflogger (= 0.68.2)
   - rn-audio (0.1.0):
     - React-Core
-  - rn-fetch-blob (0.12.0):
-    - React-Core
   - SocketRocket (0.6.0)
   - Yoga (1.14.0)
   - YogaKit (1.18.1):
@@ -433,7 +431,6 @@ DEPENDENCIES:
   - React-runtimeexecutor (from `../node_modules/react-native/ReactCommon/runtimeexecutor`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - rn-audio (from `../..`)
-  - rn-fetch-blob (from `../node_modules/rn-fetch-blob`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -520,8 +517,6 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon"
   rn-audio:
     :path: "../.."
-  rn-fetch-blob:
-    :path: "../node_modules/rn-fetch-blob"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -572,7 +567,6 @@ SPEC CHECKSUMS:
   React-runtimeexecutor: b960b687d2dfef0d3761fbb187e01812ebab8b23
   ReactCommon: 095366164a276d91ea704ce53cb03825c487a3f2
   rn-audio: 295388ab45b58d1d65c5f4682d913e3c306e348d
-  rn-fetch-blob: f065bb7ab7fb48dd002629f8bdcb0336602d3cba
   SocketRocket: fccef3f9c5cedea1353a9ef6ada904fde10d6608
   Yoga: 99652481fcd320aefa4a7ef90095b95acd181952
   YogaKit: f782866e155069a2cca2517aafea43200b01fd5a
