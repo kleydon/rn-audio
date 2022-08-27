@@ -1,6 +1,6 @@
 # rn-audio
 
-React-native module for recording and playing audio files on `iOS` and `android`, with platform-supported formats and options (as well as .wav support). This module can additionally play audio files from a URL.
+React-native module for recording and playing audio files on `iOS` and `android`, using platform-supported formats and options (as well as .wav support). This module can additionally play audio files from a URL.
 
 
 
@@ -46,7 +46,6 @@ import {
   PlayUpdateMetadata,
   PlayStopMetadata
 } from 'rn-audio'
-import { Platform } from 'react-native'
 
 // Recording
 
@@ -64,6 +63,9 @@ const recUpdateCallback = async (e: RecUpdateMetadata) => {
 const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
   console.log('recStop:', e)   
 }
+
+setSubscriptionDuration(0.25)  // Rate of callbacks that fire during recording and playback.
+                               // Defaults to 0.5
 
 audio.startRecorder({ recUpdateCallback, recStopCallback, recordingOptions })
 ...
@@ -90,7 +92,7 @@ const playUpdateCallback = async (e: PlayUpdateMetadata) => {
 }
 const playStopCallback = async (e: PlayStopMetadata):Promise<void> => {
   console.log('playStop:', e)      
-  //Did playback stop due to user request? An error? Max duration exceeded?
+  //Did playback stop due to completion? An error? User request?
 }
 ...
 ...
@@ -101,97 +103,122 @@ audio.pausePlayer()
 audio.resumePlayer()
 ...
 audio.stopPlayer()
-
+...
 audio.seekToPlayer(time)
 ...
+
+
+// Time formatting
+
+audio.mmss(secs)  // Returns MM:SS formatted time string
+
+audio.mmssss(ms)  // Returns a MM:SS:mm formatted time string
 ```
 
-For specifying directories, transferring recorded files, dealing with file data, etc, consider using:
+For specifying directories, transferring recordings, dealing with file data, etc, consider using:
 
-* (react-native-blob-util)[https://www.npmjs.com/package/react-native-blob-util]
-* (react-native-fs)[https://www.npmjs.com/package/react-native-fs]
+* [react-native-blob-util](https://www.npmjs.com/package/react-native-blob-util)
+* [react-native-fs](https://www.npmjs.com/package/react-native-fs)
+* [buffer](https://www.npmjs.com/package/buffer)
 
 
 
 ### Options:
 
-Recording options are below; for a full list of types and options, see (here)[https://github.com/kleydon/rn-audio/blob/main/src/index.tsx]:
+Recording options are below; for a full list of options/types, see (here)[https://github.com/kleydon/rn-audio/blob/main/src/index.tsx]:
 
 ```typescript
-audioFileNameOrPath?: string,
-recMeteringEnabled?: boolean,
-maxRecDurationSec?: number,
-sampleRate?: number,
-numChannels?: NumberOfChannelsId,
-encoderBitRate?: number,
-lpcmByteDepth?: ByteDepthId,
+export interface RecordingOptions {
+  audioFileNameOrPath?: string,  // If wav encoding/format/LPCM params specified, defaults to 'recording.wav';
+                                 // otherwise, 'recording.m4a' for ios, and 'recording.mp4' for android.
+  maxRecDurationSec?: number,
+  recMeteringEnabled?: boolean,  // db sound level
+  sampleRate?: number,  // defaults to 44100
+  numChannels?: NumberOfChannelsId,  // 1 or 2, defaults to 1
+  encoderBitRate?: number,  // Defaults to 128000 
+  lpcmByteDepth?: ByteDepthId,  // 1 or 2, defaults to 2 = 16 bits
 
-//Apple-specific
-appleAudioFormatId?: AppleAudioFormatId,
-appleAVAudioSessionModeId?: AppleAVAudioSessionModeId,
-//Apple encoded/compressed-specific
-appleAVEncoderAudioQualityId?: AppleAVEncoderAudioQualityId,
-//Apple LPCM/WAV-specific
-appleAVLinearPCMIsBigEndian?: boolean,
-appleAVLinearPCMIsFloatKeyIOS?: boolean,
-appleAVLinearPCMIsNonInterleaved?: boolean,
+  //Apple-specific
+  appleAudioFormatId?: AppleAudioFormatId,  // Defaults to aac
+  appleAVAudioSessionModeId?: AppleAVAudioSessionModeId,  // Defaults to measurement
+  //Apple encoded/compressed-specific
+  appleAVEncoderAudioQualityId?: AppleAVEncoderAudioQualityId,  // Defaults to high
+  //Apple LPCM/WAV-specific
+  appleAVLinearPCMIsBigEndian?: boolean,  // Defaults to false
+  appleAVLinearPCMIsFloatKeyIOS?: boolean,  // Defaults to false
+  appleAVLinearPCMIsNonInterleaved?: boolean,  // Defaults to false
 
-//Android-specific
-androidAudioSourceId?: AndroidAudioSourceId,
-androidOutputFormatId?: AndroidOutputFormatId,
-androidAudioEncoderId?: AndroidAudioEncoderId,
-//Android encoded/compressed-specific
-//(None)
+  //Android-specific
+  androidAudioSourceId?: AndroidAudioSourceId,  // Defaults to MIC
+  androidOutputFormatId?: AndroidOutputFormatId,  // Defaults to MPEG_4
+  androidAudioEncoderId?: AndroidAudioEncoderId,  // Defaults to AAC
+  //Android encoded/compressed-specific
+  //(None)
+}
 ```
 
 ## Contributing
 
-See the [contributing guide](CONTRIBUTING.md) to learn how to contribute to the repository and the development workflow.
+See the [guide to contributing](CONTRIBUTING.md), to learn how to contribute to this repository and our development workflow.
 
-## License
+## License & Attributions
 
 MIT
 
+## Attributions
 
-## Set up (for development)
+This project is inspired by, and to some extent based upon, the following projects:
+* [react-native-audio-recorder-player](https://www.npmjs.com/package/react-native-audio-recorder-player) by [Dooboolab] (https://github.com/hyochan/react-native-audio-recorder-player)
+* [react-native-audio-record](https://github.com/goodatlas/react-native-audio-record), by [Atlas Labs](https://github.com/goodatlas)
 
-Run `yarn` from `rn-audio` project directory. (If re-installing, may need to delete node_modules and yarn.lock files in project and example directories...)
+
+## Development
+
+Developing react-native modules is slow going; it is typically necessary to work in (at least) 3 languages simultaneously, and easy to make mistakes. Take your time, be deliberate, save your work through frequent small commits. 
+
+**When project settings get messed up, it is often easier to build a new project from scratch using [create-react-native-library](https://github.com/callstack/react-native-builder-bob) - see below - then re-import your functional code into this new, up-to-date project skeleton.**
+
+**Don't mindlessly update project settings, when XCode and Android Studio suggest to do this! Where possible, stick with the defaults provided by [create-react-native-library](https://github.com/callstack/react-native-builder-bob).**
+
+**Don't cavalierly upgrade react-native; preview with (react-native upgrade helper)[https://react-native-community.github.io/upgrade-helper/]. Probably easier to rebuild the project with [create-react-native-library](https://github.com/callstack/react-native-builder-bob)!**
+
+### Set up
+
+Download the project repo, and run `yarn` from `rn-audio` project directory. (If re-installing, may need to delete `node_modules` and `yarn.lock` files in the `project` and `example` directories.)
 
 ## Running the example (for development)
 
-Run `yarn example ios` and `yarn example android` from rn-audio project directory
+From the `rn-audio` project directory, run `yarn example ios` and `yarn example android` to run on iOS and android emulators, respectively. You may need to run `npx pod-install` as well, to ensure the iOS project has its dependencies met.
 
 
+## Re-Creating the Library's Project Skeleton
 
+### Library skeleton set-up:
 
-
-## Dev Notes
-
-Based on 
-  react-native-audio-recorder-player
-  Based on [react-native-audio-record](https://github.com/goodatlas/react-native-audio-record), by [Atlas Labs](https://github.com/goodatlas)
-
-Skeleton set-up:
-
-  npx create-react-native-library
-    ✔ What is the email address for the package author? … rnaudio@krispinleydon.net
+  1. Run `npx create-react-native-library`
+    ✔ What is the email address for the package author? … rn-audio@krispinleydon.net
     ✔ What is the URL for the package author? … https://github.com/kleydon/rn-audio
     ✔ What is the URL for the repository? … https://github.com/kleydon/rn-audio
     ✔ What type of library do you want to develop? › Native module
     ✔ Which languages do you want to use? › Kotlin & Swift
-  cd into main project folder
-  Get started with the project:
-    $ yarn
-  Run example app on iOS:
-    $ yarn example ios
-  Run the example app on Android:
-    $ yarn example android
+  2. `cd` into the library's main project folder
+  3. Get started with the project:
+    `yarn`
+  4. Run example app on iOS:
+    `yarn example ios`
+  5. Run the example app on Android:
+    `yarn example android`
+  6. Create / update .gitignore, to ignore `node_modules`, etc.
+  7. Add functional swift/kotlin/typescript code to the library
 
-Gotchas:
+### Gotchas:
+
   * In the *Module.kt file: 
-    * Be sure to update the value of the tag string.
-    * In the class declaration, be sure to use **private val** reactContext, so it reactContext is available to class member functions
-  * In the XCode MODULE project - use the bridging header file. 
+    * Be sure the value of the `TAG` string matches the (PascalCase) name of the module
+    * In the module class declaration, be sure to use **private val** reactContext, so 
+      reactContext is available to class member functions
+  * In the XCode MODULE project - use the bridging header file.
+  * Ensure that a .gitignore file is preventing unnecessary repo bloat
 
 
 Upgrading react-native:

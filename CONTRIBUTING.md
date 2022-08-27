@@ -51,9 +51,10 @@ Remember to add tests for your change if possible. Run the unit tests by:
 ```sh
 yarn test
 ```
-To edit the Objective-C files, open `example/ios/RnAudioExample.xcworkspace` in XCode and find the source files at `Pods > Development Pods > rn-audio`.
+To edit the Objective-C / swift files, open `example/ios/RnAudioExample.xcworkspace` in XCode and find the source files at `Pods > Development Pods > rn-audio`.
 
 To edit the Kotlin files, open `example/android` in Android studio and find the source files at `rnaudio` under `Android`.
+
 ### Commit message convention
 
 We follow the [conventional commits specification](https://www.conventionalcommits.org/en) for our commit messages:
