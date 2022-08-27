@@ -436,15 +436,6 @@ export class Audio {
     return res ? Promise.resolve(res) : Promise.reject('Recording Option resolution errors: ' + errMsgs.toString())
   }
 
-  isWavAndAndroid = (path:string|undefined):boolean => {
-    ilog('index.isWavAndAndroid()')
-    return (
-      Platform.OS === 'android' && 
-      typeof(path)!== 'undefined' &&
-      path.toLowerCase().endsWith('.wav')
-    )
-  }
-
   mmss = (secs: number): string => {
     let minutes = Math.floor(secs / 60)
     secs = secs % 60
