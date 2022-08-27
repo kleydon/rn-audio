@@ -1,16 +1,42 @@
 # rn-audio
-React native library for recording and playing audio
+
+Simple react-native library for recording and playing audio files on `iOS` and `android`, with platform-supported formats + WAV. This module can additionally play (supported) audio files given a URL.
+
+
 
 ## Installation:
 
-In package.json's dependencies section:
-  "rn-audio": "kleydon/rn-audio<#tag/commit/master>"
+In your react-native project's directory, type:
+```
+yarn add 'rn-audio@https://github.com/kleydon/rn-audio'
+````
 
-## Post-installation
-  Android:
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+[iOS only]:
+```
+npx pod-install
+```
+
+
+## Post-installation:
+
+#### iOS
+You need to add a usage description to Info.plist:
+```plist
+<key>NSMicrophoneUsageDescription</key>
+<string>Give $(PRODUCT_NAME) permission to use your microphone. Your record wont be shared without your permission.</string>
+```
+Also, add swift bridging header (if you haven't created one already) for swift compatibility.
+
+#### Android
+
+Add the following permissions to your application's `AndroidManifest.xml`:
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+```
+
+
 
 ## Set up (for development)
 
