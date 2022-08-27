@@ -1,12 +1,12 @@
 # rn-audio
 
-Simple react-native library for recording and playing audio files on `iOS` and `android`, with platform-supported formats (+ WAV), written in typescript. This module can additionally play audio files from a URL.
+React-native module for recording and playing audio files on `iOS` and `android`, with platform-supported formats and options (as well as .wav support). This module can additionally play audio files from a URL.
 
 
 
 ## Installation:
 
-In your react-native project's directory, type:
+In your project directory, type:
 ```
 yarn add 'rn-audio@https://github.com/kleydon/rn-audio'
 ````
@@ -23,9 +23,9 @@ npx pod-install
 You need to add a usage description to Info.plist:
 ```xml
 <key>NSMicrophoneUsageDescription</key>
-<string>$(PRODUCT_NAME) needs your permission to use the microphone.</string>
+<string>$(PRODUCT_NAME) requires your permission to use the microphone.</string>
 ```
-Also, [add a swift bridging header](https://javedmultani16.medium.com/adding-a-swift-bridging-header-b6b0a7ab895f) (if you haven't created one already) for swift compatibility.
+Also, [add a swift bridging header](https://javedmultani16.medium.com/adding-a-swift-bridging-header-b6b0a7ab895f) (if you don't have one already), for swift compatibility.
 
 #### Android
 
@@ -39,16 +39,19 @@ Add the following permissions to your application's `AndroidManifest.xml`:
 ## Usage:
 
 ```typescript
-import { Audio } from 'rn-audio'
+import {
+  Audio,
+  RecUpdateMetadata,
+  RecStopMetadata,
+  PlayUpdateMetadata,
+  PlayStopMetadata
+} from 'rn-audio'
 import { Platform } from 'react-native'
-import to from 'await-to-js'
 
 // Recording
 
 const recordingOptions:RecordingOptions = {
-  audioFileNameOrPath: Platform.select({
-    ios: 'recording.m4a',
-    android: 'recording.mp4',
+  audioFileNameOrPath: 'recording.wav',
   }),
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,
@@ -56,17 +59,13 @@ const recordingOptions:RecordingOptions = {
 }
 
 const recUpdateCallback = async (e: RecUpdateMetadata) => {
-  ilog('app.recUpdateCallback() - metadata: ', e)
+  console.log('recUpdate: ', e)
 }
 const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
-  ilog('app.recStopCallback() - metadata:', e)   
+  console.log('recStop:', e)   
 }
 
-audio.startRecorder({ 
-  recUpdateCallback,
-  recStopCallback,
-  recordingOptions
-})
+audio.startRecorder({ recUpdateCallback, recStopCallback, recordingOptions })
 ...
 audio.pauseRecorder()
 ...
@@ -76,35 +75,47 @@ audio.stopRecorder()
 
 const recUpdateCallback = async (e: RecUpdateMetadata) => {
   ilog('app.recUpdateCallback() - metadata: ', e)
+  //db-level, progress, etc.
 }
-const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
+const recStopCallback = async (e: RecStopMetadata) => {
   ilog('app.recStopCallback() - metadata:', e)   
+  //Did recording stop due to user request? An error? Max duration exceeded?
 }
 
 // Playback
 
-const playUpdateCallback = (e: PlayUpdateMetadata) => {
-  ilog('app.playUpdateEventCallback() - metadata: ', e)     
+const playUpdateCallback = async (e: PlayUpdateMetadata) => {
+  console.log('playUpdate: ', e)
+  //progress, muted, etc.   
 }
 const playStopCallback = async (e: PlayStopMetadata):Promise<void> => {
-  ilog('app.playStopCallback() - metadata:', e)      
+  console.log('playStop:', e)      
+  //Did playback stop due to user request? An error? Max duration exceeded?
 }
 ...
 ...
-audio.startPlayer({
-  playUpdateCallback,
-  playStopCallback,
-  playVolume: 1.0,
-})
+audio.startPlayer({ fileNameOrPathOrURL, playUpdateCallback, playStopCallback, playVolume: 1.0 })
 ...
 audio.pausePlayer()
 ...
 audio.resumePlayer()
 ...
 audio.stopPlayer()
+
+audio.seekToPlayer(time)
+...
 ```
 
-### Full List of Recording Options:
+For specifying directories, transferring recorded files, dealing with file data, etc, consider using:
+
+* (react-native-blob-util)[https://www.npmjs.com/package/react-native-blob-util]
+* (react-native-fs)[https://www.npmjs.com/package/react-native-fs]
+
+
+
+### Options:
+
+Recording options are below; for a full list of types and options, see (here)[https://github.com/kleydon/rn-audio/blob/main/src/index.tsx]:
 
 ```typescript
 audioFileNameOrPath?: string,
