@@ -1,6 +1,6 @@
 # rn-audio
 
-Simple react-native library for recording and playing audio files on `iOS` and `android`, with platform-supported formats + WAV. This module can additionally play (supported) audio files given a URL.
+Simple react-native library for recording and playing audio files on `iOS` and `android`, with platform-supported formats (+ WAV), written in typescript. This module can additionally play audio files from a URL.
 
 
 
@@ -21,11 +21,11 @@ npx pod-install
 
 #### iOS
 You need to add a usage description to Info.plist:
-```plist
+```xml
 <key>NSMicrophoneUsageDescription</key>
-<string>Give $(PRODUCT_NAME) permission to use your microphone. Your record wont be shared without your permission.</string>
+<string>$(PRODUCT_NAME) needs your permission to use the microphone.</string>
 ```
-Also, add swift bridging header (if you haven't created one already) for swift compatibility.
+Also, [add a swift bridging header](https://javedmultani16.medium.com/adding-a-swift-bridging-header-b6b0a7ab895f) (if you haven't created one already) for swift compatibility.
 
 #### Android
 
@@ -36,23 +36,101 @@ Add the following permissions to your application's `AndroidManifest.xml`:
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 ```
 
+## Usage:
 
+```typescript
+import { Audio } from 'rn-audio'
+import { Platform } from 'react-native'
+import to from 'await-to-js'
 
-## Set up (for development)
+// Recording
 
-Run `yarn` from rn-audio project directory. (If re-installing, may need to delete node_modules and yarn.lock files in project and example directories...)
+const recordingOptions:RecordingOptions = {
+  audioFileNameOrPath: Platform.select({
+    ios: 'recording.m4a',
+    android: 'recording.mp4',
+  }),
+  recMeteringEnabled: true,
+  maxRecDurationSec: 10.0,
+  ...
+}
 
-## Running the example (for development)
+const recUpdateCallback = async (e: RecUpdateMetadata) => {
+  ilog('app.recUpdateCallback() - metadata: ', e)
+}
+const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
+  ilog('app.recStopCallback() - metadata:', e)   
+}
 
-Run `yarn example ios/android` from rn-audio project directory
+audio.startRecorder({ 
+  recUpdateCallback,
+  recStopCallback,
+  recordingOptions
+})
+...
+audio.pauseRecorder()
+...
+audio.resumeRecorder()
+...
+audio.stopRecorder()
 
+const recUpdateCallback = async (e: RecUpdateMetadata) => {
+  ilog('app.recUpdateCallback() - metadata: ', e)
+}
+const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
+  ilog('app.recStopCallback() - metadata:', e)   
+}
 
-## Usage
+// Playback
 
-```js
-import { Audio } from "rn-audio";
+const playUpdateCallback = (e: PlayUpdateMetadata) => {
+  ilog('app.playUpdateEventCallback() - metadata: ', e)     
+}
+const playStopCallback = async (e: PlayStopMetadata):Promise<void> => {
+  ilog('app.playStopCallback() - metadata:', e)      
+}
+...
+...
+audio.startPlayer({
+  playUpdateCallback,
+  playStopCallback,
+  playVolume: 1.0,
+})
+...
+audio.pausePlayer()
+...
+audio.resumePlayer()
+...
+audio.stopPlayer()
+```
 
-// ...
+### Full List of Recording Options:
+
+```typescript
+audioFileNameOrPath?: string,
+recMeteringEnabled?: boolean,
+maxRecDurationSec?: number,
+sampleRate?: number,
+numChannels?: NumberOfChannelsId,
+encoderBitRate?: number,
+lpcmByteDepth?: ByteDepthId,
+
+//Apple-specific
+appleAudioFormatId?: AppleAudioFormatId,
+appleAVAudioSessionModeId?: AppleAVAudioSessionModeId,
+//Apple encoded/compressed-specific
+appleAVEncoderAudioQualityId?: AppleAVEncoderAudioQualityId,
+//Apple LPCM/WAV-specific
+appleAVLinearPCMIsBigEndian?: boolean,
+appleAVLinearPCMIsFloatKeyIOS?: boolean,
+appleAVLinearPCMIsNonInterleaved?: boolean,
+
+//Android-specific
+androidAudioSourceId?: AndroidAudioSourceId,
+androidOutputFormatId?: AndroidOutputFormatId,
+androidAudioEncoderId?: AndroidAudioEncoderId,
+//Android encoded/compressed-specific
+//(None)
 ```
 
 ## Contributing
@@ -63,7 +141,18 @@ See the [contributing guide](CONTRIBUTING.md) to learn how to contribute to the 
 
 MIT
 
----
+
+## Set up (for development)
+
+Run `yarn` from `rn-audio` project directory. (If re-installing, may need to delete node_modules and yarn.lock files in project and example directories...)
+
+## Running the example (for development)
+
+Run `yarn example ios` and `yarn example android` from rn-audio project directory
+
+
+
+
 
 ## Dev Notes
 
