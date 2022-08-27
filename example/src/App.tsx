@@ -15,11 +15,11 @@ import {
   ByteDepthId,
 } from 'rn-audio'
 import {
+  AppState,
   Dimensions,
   PermissionsAndroid,
   Platform,
   SafeAreaView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -28,103 +28,18 @@ import React, {
   ReactElement,
   useCallback,
   useState,
+  useEffect,
+  useRef,
 } from 'react'
 import to from 'await-to-js'
 //import ReactNativeBlobUtil from 'react-native-blob-util'  // For directory structure, file transfer, etc.
-import Button from './components/Button'
+import { Button } from './components/Button'
+import { ss } from './styles/styleSheet'
 
 const ilog = console.log
 const wlog = console.warn
 const elog = console.error
 
-const styles: any = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#455A64',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'flex-start'
-  },
-  titleTxt: {
-    marginTop: 100,
-    color: 'white',
-    fontSize: 28,
-  },
-  viewButtonRow: {
-    marginTop: 20,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-  },
-  viewButtonSet: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  viewPlayer: {
-    marginTop: 40,
-    alignSelf: 'stretch',
-    alignItems: 'center',
-  },
-  viewBarWrapper: {
-    paddingTop: 28,
-    paddingBottom: 10,
-    marginHorizontal: 28,
-    alignSelf: 'stretch',
-  },
-  viewBar: {
-    backgroundColor: '#ccc',
-    height: 4,
-    alignSelf: 'stretch',
-  },
-  viewBarPlay: {
-    backgroundColor: 'white',
-    height: 4,
-    width: 0,
-  },
-  playStatusTxt: {
-    marginTop: 8,
-    color: '#ccc',
-  },
-  playBtnWrapper: {
-    flexDirection: 'row',
-    marginTop: 40,
-  },
-  btn: {
-    margin: 5,
-  },
-  txt: {
-    color: 'white',
-    fontSize: 14,
-    marginHorizontal: 8,
-    marginVertical: 4,
-  },
-  txtRecordCounter: {
-    marginTop: 32,
-    color: 'white',
-    fontSize: 20,
-    textAlignVertical: 'center',
-    fontWeight: '200',
-    fontFamily: 'Helvetica Neue',
-    letterSpacing: 3,
-  },
-  txtCounter: {
-    marginTop: 12,
-    color: 'white',
-    fontSize: 20,
-    textAlignVertical: 'center',
-    fontWeight: '200',
-    fontFamily: 'Helvetica Neue',
-    letterSpacing: 3,
-  },
-})
-
-const screenWidth = Dimensions.get('screen').width
-
-//const dirs = ReactNativeBlobUtil.fs.dirs
-
-const audio = new Audio();
-audio.setSubscriptionDuration(0.15) // optional; default is (0.5)
 
 const recordingOptions:RecordingOptions = {
   
@@ -168,8 +83,38 @@ const recordingOptions:RecordingOptions = {
 
 const DEFAULT_TIME_STR = '00:00:00'
 
+const screenWidth = Dimensions.get('screen').width
+ilog('screenWidth: ', screenWidth)
+
+//const dirs = ReactNativeBlobUtil.fs.dirs
+
+const audio = new Audio();
+audio.setSubscriptionDuration(0.25) // optional; default is (0.5)
+
 
 export default function App(): ReactElement {
+
+  // Without appState listening (below):
+  // * android continues playing in the bg
+  // * iOS pauses recording/playback audio for backgrounded app, 
+  //   then brings it back when app is foregrounded again
+  const appState = useRef(AppState.currentState)
+  useEffect(() => {
+    const subscription = 
+      AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/active/) &&
+          nextAppState.match(/inactive|background/)) {
+        console.log('app.appStateEventListener() - App left foreground; stopping any playing/recording')
+        onStopRecord()
+        onStopPlay()
+      }
+      appState.current = nextAppState
+    })
+    return () => {
+      subscription.remove()
+    }
+  }, [])
+
 
   const [playbackElapsedMs, setPlaybackElapsedMs] = useState<number>(0)
   const [playbackDurationMs, setPlaybackDurationMs] = useState<number>(0)
@@ -179,9 +124,11 @@ export default function App(): ReactElement {
   const [playbackDurationStr, setPlaybackDurationStr] = useState<string>(DEFAULT_TIME_STR)
 
   let playWidth = (playbackElapsedMs / playbackDurationMs) * (screenWidth - 56)
-  if (!playWidth) {
+  if (Number.isFinite(playWidth)==false || Number.isNaN(playWidth) ) {
     playWidth = 0
   }
+  ilog('playWidth:'+ playWidth) 
+
 
   const ifAndroidEnsurePermissionsSecured = useCallback(async ():Promise<boolean> => {
     const funcName = 'app.ifAndroidEnsurePermissionsSecured()'
@@ -215,7 +162,7 @@ export default function App(): ReactElement {
     return true
   }, [])
 
-
+  // RECORDING
   
   const onStartRecord = useCallback(async ():Promise<undefined> => {
     const funcName = 'app.onStartRecord()'
@@ -226,7 +173,7 @@ export default function App(): ReactElement {
       return Promise.reject(errStr)
     }
     ilog(funcName + ' - recordingOptions: ', recordingOptions)
-    const recUpdateCallback = (e: RecUpdateMetadata) => {
+    const recUpdateCallback = async (e: RecUpdateMetadata) => {
       ilog('app.recUpdateCallback() - metadata: ', e)
       setRecordingElapsedStr(audio.mmssss(
         Math.floor(e.recElapsedMs),
@@ -296,6 +243,9 @@ export default function App(): ReactElement {
     ilog(funcName + ' - Result: ', res)
     return
   }, [])
+
+
+  // PLAYBACK
 
 
   const onStartPlay = useCallback(async ():Promise<void> => {
@@ -382,96 +332,88 @@ export default function App(): ReactElement {
     const funcName = 'app.onStatusPress()'
     ilog(funcName)
     const touchX = e.nativeEvent.locationX
-    const playWidth =
-      (playbackElapsedMs / playbackDurationMs) *
-      (screenWidth - 56)
-    const pbElapsedMs = Math.round(playbackElapsedMs)
-    if (playWidth && playWidth < touchX) {
-      const addSecs = Math.round(pbElapsedMs + 1000)
-      audio.seekToPlayer(addSecs)
-      ilog(funcName + ` - addSecs: ${addSecs}`)
-    } 
-    else {
-      const subSecs = Math.round(pbElapsedMs - 1000)
-      audio.seekToPlayer(subSecs)
-      ilog(funcName + `- subSecs: ${subSecs}`)
-    }
+    const newFractionPlayed = touchX / (screenWidth - 2*ss.viewBarWrapper.marginHorizontal)
+    ilog(funcName + ` - touchX: ${touchX}`)
+    ilog(funcName + ` - newFractionPlayed: ${newFractionPlayed}`)
+    audio.seekToPlayer(Math.round(newFractionPlayed*playbackDurationMs))
   }, [playbackElapsedMs, playbackDurationMs])
 
 
+  //RENDERING
+
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.titleTxt}>RnAudio Example</Text>
-      <Text style={styles.txtRecordCounter}>{recordingElapsedStr}</Text>
-      <View style={styles.viewButtonRow}>
-        <View style={styles.viewButtonSet}>
+    <SafeAreaView style={ss.container}>
+      <Text style={ss.titleTxt}>RnAudio Example</Text>
+      <Text style={ss.txtRecordCounter}>{recordingElapsedStr}</Text>
+      <View style={ss.viewButtonRow}>
+        <View style={ss.viewButtonSet}>
           <Button
-            style={styles.btn}
+            style={ss.btn}
             onPress={onStartRecord}
-            txtStyle={styles.txt}
+            txtStyle={ss.txt}
           >
             Record
           </Button>
           <Button
-            style={styles.btn}
+            style={ss.btn}
             onPress={onPauseRecord}
-            txtStyle={styles.txt}
+            txtStyle={ss.txt}
           >
             Pause
           </Button>
           <Button
-            style={styles.btn}
+            style={ss.btn}
             onPress={onResumeRecord}
-            txtStyle={styles.txt}
+            txtStyle={ss.txt}
           >
             Resume
           </Button>
           <Button
-            style={styles.btn}
+            style={ss.btn}
             onPress={onStopRecord}
-            txtStyle={styles.txt}
+            txtStyle={ss.txt}
           >
             Stop
           </Button>
         </View>
       </View>
-      <View style={styles.viewPlayer}>
+      <View style={ss.viewPlayer}>
         <TouchableOpacity
-          style={styles.viewBarWrapper}
+          style={ss.viewBarWrapper}
           onPress={onStatusPress}
         >
-          <View style={styles.viewBar}>
-            <View style={[styles.viewBarPlay, {width: playWidth}]} />
+          <View style={ss.viewBar}>
+            <View style={[ss.viewBarPlay, {width: playWidth}]} />
           </View>
         </TouchableOpacity>
-        <Text style={styles.txtCounter}>
+        <Text style={ss.txtCounter}>
           {playbackElapsedStr} / {playbackDurationStr}
         </Text>
-        <View style={styles.playBtnWrapper}>
+        <View style={ss.playBtnWrapper}>
           <Button
-            style={styles.btn}
+            style={ss.btn}
             onPress={onStartPlay}
-            txtStyle={styles.txt}
+            txtStyle={ss.txt}
           >
             Play
           </Button>
-          <Button style={styles.btn}
+          <Button style={ss.btn}
             onPress={onPausePlay}
-            txtStyle={styles.txt}
+            txtStyle={ss.txt}
           >
             Pause
           </Button>
           <Button
-            style={styles.btn}
+            style={ss.btn}
             onPress={onResumePlay}
-            txtStyle={styles.txt}
+            txtStyle={ss.txt}
           >
             Resume
           </Button>
           <Button
-            style={styles.btn}
+            style={ss.btn}
             onPress={onStopPlay}
-            txtStyle={styles.txt}
+            txtStyle={ss.txt}
           >
             Stop
           </Button> 

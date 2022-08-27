@@ -168,22 +168,34 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   private fun onRoutingChangedInner() {
     var funcName = TAG + ".onRoutingChangedListener()"
     Log.d(TAG, funcName)
+    val recorderState = getRecorderState()
+    val playerState = getPlayerState()
     try {
-      if (_recordHandler != null) {
-        _recorderRunnable?.let { _recordHandler!!.removeCallbacks(it) }
+      if (recorderState != RecorderState.Stopped) {
+        if (_recordHandler != null) {
+          _recorderRunnable?.let { _recordHandler!!.removeCallbacks(it) }
+        }
+        //In case recording non-LPCM
+        resetMediaRecorder()
+        //In case recording LPCM
+        _currentlyRecordingLPCM = false
+        resetAudioRecord()
       }
-      //In case recording non-LPCM
-      resetMediaRecorder()
-      //In case recording LPCM
-      _currentlyRecordingLPCM = false
-      resetAudioRecord()
+      if (playerState != PlayerState.Stopped) {
+        resetMediaPlayer()
+      }
     } 
     catch (e:Exception) {
       Log.e(TAG, funcName + " - " + e)
     }
     finally {
-      _recStopCode = RecStopCode.Error
-      sendRecStopEvent()
+      if (recorderState != RecorderState.Stopped) {
+        _recStopCode = RecStopCode.Error
+        sendRecStopEvent()
+      }
+      if (playerState != PlayerState.Stopped) {
+        sendPlayStopEvent(PlayStopCode.Error)
+      }
     }
   }
 
@@ -678,11 +690,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
           }
           if (bytesRead > 0 && ++frameCount > 2) { // skip first 2, to eliminate "click sound"
 
-  // if (numSamplesProcessed > 44100) {
-  //   Log.d(TAG, "WWWWWWWWWW *")
-  //   onRoutingChangedInner()
-  // }
-
             val bytesPerPacket:Int = _lpcmByteDepth * _numChannels
             var numSamplesToProcess:Int = bytesRead / bytesPerPacket
             if (numSamplesProcessed + numSamplesToProcess >= _maxNumSamples) {
@@ -919,7 +926,15 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
         //Set timer task to send event to RN.
         _playUpdateTimerTask = object : TimerTask() {
           override fun run() {
-            sendPlayUpdateEvent(mp.currentPosition, mp.duration)
+            try {  
+              val elapsedMs = mp?.currentPosition  // This can throw IllegalStateExceptions
+              val durationMs = mp?.duration  // This can throw IllegalStateExceptions
+              if (elapsedMs != null && durationMs != null) {
+                sendPlayUpdateEvent(elapsedMs!!, durationMs!!)
+              }
+            } catch (e:Exception) {
+              Log.e(TAG, TAG+"."+funcName+".playTimerTask.run() - " + e)
+            }
           }
         }
         _playUpdateTimer = Timer()
@@ -946,6 +961,12 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
         resetMediaPlayer()
         //Send event 
         sendPlayStopEvent(PlayStopCode.MaxDurationReached)
+      }
+
+      //Add route change listener
+      if (_routingChangedListener != null) {
+        Log.d(TAG, funcName + " Adding routing changed listener... ")
+        _mediaPlayer!!.addOnRoutingChangedListener(_routingChangedListener, null) 
       }
 
       _mediaPlayer!!.prepare()

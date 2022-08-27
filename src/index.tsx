@@ -567,7 +567,7 @@ export class Audio {
    * @returns {Promise<PlayerState>}
    */
   getPlayerState = async (): Promise<PlayerState> => {
-    const funcName = 'index.getPlayerState()'
+    const funcName = 'index.getPlayerState(): ' + RnAudio.getPlayerState()
     ilog(funcName)
     return await RnAudio.getPlayerState()
   }
@@ -700,7 +700,8 @@ export class Audio {
   stopRecorder = async (): Promise<object|string> => {
     const funcName = 'index.stopRecorder()'
     ilog(funcName)
-    //NOTE: Callbacks get removed when recStopCallback fires; see addRecStopCallback
+    this.removeRecUpdateCallback()
+    //NOTE: RecStopCallback gets removed when recStopCallback fires; see addRecStopCallback
     const [err, res] = await to<object|string>(RnAudio.stopRecorder())
     if (err) {
       const errStr = funcName + ' - ' + err
@@ -838,7 +839,8 @@ export class Audio {
   stopPlayer = async (): Promise<string> => {
     const funcName = 'index.stopPlayer()'
     ilog(funcName)
-    //NOTE: Callbacks get removed when playStopCallback fires; see addPlayStopCallback
+    this.removePlayUpdateCallback()
+    //NOTE: PlayStopCallback gets removed when playStopCallback fires; see addRecStopCallback
     const [err, res] = await to<string>(RnAudio.stopPlayer())
     if (err) {
       const errStr = funcName + '- ' + err

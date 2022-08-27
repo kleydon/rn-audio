@@ -42,6 +42,10 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     case Paused
     case Stopped
   }
+
+  enum RnAudioError: Error {
+    case error(String)
+  }
     
   //Keys 
   enum Key : String {
@@ -183,6 +187,22 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     _subscriptionDurationSec = durationSec
   }
 
+ 
+    
+  func isURLString(maybeURLString:String) -> Bool {
+    return (maybeURLString.hasPrefix("http://") ||
+            maybeURLString.hasPrefix("https://"))
+  }
+    
+
+  func assertFileExists(filePath:String) throws -> Void {
+    let funcName = "assertFileExists()"
+    print(funcName)
+    if (FileManager.default.fileExists(atPath:filePath) == false) {
+      throw RnAudioError.error("File to play doesn't exist.")
+    }
+  }
+    
 
   func resolveFilePathOrURL(rawFileNameOrPathOrURL: String?) -> URL {
     let funcName = TAG + ".resolveFilePathOrURL()"
@@ -542,7 +562,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
-    let funcName = TAG + ".stopRecorder()"
+    let funcName = TAG + ".stopRecorder(promise)"
     print(funcName)
     
     if (_audioRecorder == nil) {
@@ -588,9 +608,11 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   @objc func updateRecorderProgress(timer: Timer) -> Void {
     let funcName = TAG + ".updateRecorderProgress()"
     print(funcName)
+    
     if (_audioRecorder == nil) {
       return
     }
+    
     //_audioRecorder is STILL not assumed to be non-nil below,
     //because I've encountered a situation where it WASN'T.
     //(Possibly due to asynchronous access? Not sure.)
@@ -599,14 +621,23 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       _audioRecorder?.updateMeters()
       meterLevelDb = _audioRecorder?.averagePower(forChannel: 0) ?? 0.0
     }
+    let elapsedMs = _audioRecorder?.currentTime ?? 0
+    let isRecording = _audioRecorder?.isRecording ?? false
 
-    sendRecUpdateEvent(elapsedMs: (_audioRecorder?.currentTime ?? 0) * 1000, 
-                       isRecording: _audioRecorder?.isRecording ?? false,
-                       meterLevelDb: meterLevelDb)
-
-    if ((_audioRecorder?.currentTime ?? 0) >= _maxRecDurationSec) {
-      sendRecStopEvent(recStopCode:RecStopCode.MaxDurationReached)
+    if (elapsedMs < 0) {
+      print(funcName + " - elapsed time negative; some problem occurred.")
       stopRecorder()
+      sendRecStopEvent(recStopCode: RecStopCode.Error)
+      return
+    }
+    if (elapsedMs < _maxRecDurationSec) {
+      sendRecUpdateEvent(elapsedMs: elapsedMs * 1000, 
+                    isRecording: isRecording,
+                    meterLevelDb: meterLevelDb)
+    }
+    else {      
+      stopRecorder()
+      sendRecStopEvent(recStopCode:RecStopCode.MaxDurationReached)
     }
   }
 
@@ -651,15 +682,19 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
             AVAudioSession.CategoryOptions.allowBluetooth
           ])
       try _audioSession.setActive(true)
+      _audioFilePathOrURL = resolveFilePathOrURL(rawFileNameOrPathOrURL: fileNameOrPathOrURL)
+      if (_audioFilePathOrURL!.isFileURL) {
+        try assertFileExists(filePath: _audioFilePathOrURL!.path)
+      }
+      _audioPlayerAsset = AVURLAsset(url: _audioFilePathOrURL!, 
+                                     options: ["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
+      _audioPlayerItem = AVPlayerItem(asset: _audioPlayerAsset!)
     } 
     catch {
+      print(funcName + " - Error: ", error)
       sendPlayStopEvent(playStopCode: PlayStopCode.Error)
       return reject(TAG, funcName + " Failed to play", nil)
     }
-    _audioFilePathOrURL = resolveFilePathOrURL(rawFileNameOrPathOrURL: fileNameOrPathOrURL)
-    _audioPlayerAsset = AVURLAsset(url: _audioFilePathOrURL!, 
-                                  options: ["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
-    _audioPlayerItem = AVPlayerItem(asset: _audioPlayerAsset!)
 
     if (_audioPlayer == nil) {
       _audioPlayer = AVPlayer(playerItem: _audioPlayerItem)
@@ -680,37 +715,45 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     //Abort observers
     NotificationCenter.default.addObserver(
-      self, 
+      self,
       selector: #selector(self.abort),
       name: NSNotification.Name.AVPlayerItemFailedToPlayToEndTime,
       object: nil
     )
     NotificationCenter.default.addObserver(
-      self, 
+      self,
       selector: #selector(self.abort),
       name: NSNotification.Name.AVPlayerItemPlaybackStalled,
       object: nil
     )
     NotificationCenter.default.addObserver(
-      self, 
+      self,
       selector: #selector(self.abort),
       name: NSNotification.Name.AVPlayerItemNewErrorLogEntry,
       object: nil
-    )
+     )
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(self.abort),
       name: AVAudioSession.interruptionNotification,
       object: nil
     )
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(self.abort),
-      name: UIApplication.didEnterBackgroundNotification,
-      object: nil
-    )
-
-
+      
+    //CAUSING PROBLEMS
+    // * AVRecorder - Stops in response to pugging/unplugging mic. Ok.
+    // * AVPlayer - When you UNplug a mic, player automatically stops. Ok.
+    //              But the same is NOT true when you plug IN a mic / headset.
+    //              Perhaps routChangeNotification could take care of that.
+    // * BUT The routeChangeNotification selector fires MULTIPLE TIMES with the same
+    //   notification (?). We would need to examine if audio input / output routes
+    //   had CHANGED in order to safely call abort() - for playing
+    //NotificationCenter.default.addObserver(
+    //  self,
+    //  selector: #selector(self.abort),
+    //  name: AVAudioSession.routeChangeNotification,
+    //  object: nil
+    //)
+      
     addPeriodicTimeObserver() 
     
     _audioPlayer.play()
@@ -811,14 +854,22 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     let funcName = TAG + ".abort()"
     print(funcName)
     print("  Notification: ", notification)
+    //Player
     if (_audioPlayer != nil) {
+      _audioPlayer.pause()
       removePeriodicTimeObserver()
       _audioPlayer = nil
       sendPlayStopEvent(playStopCode:PlayStopCode.Error)
     }
+    //Recorder
     if (_audioRecorder != nil) {
+      _audioRecorder.stop()
       _audioRecorder = nil
       sendRecStopEvent(recStopCode:RecStopCode.Error)
+    }
+    if (_recordTimer != nil) {
+      _recordTimer!.invalidate()
+      _recordTimer = nil
     }
   }
 
