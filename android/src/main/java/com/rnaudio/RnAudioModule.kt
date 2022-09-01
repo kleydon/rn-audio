@@ -930,7 +930,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
               val elapsedMs = mp?.currentPosition  // This can throw IllegalStateExceptions
               val durationMs = mp?.duration  // This can throw IllegalStateExceptions
               if (elapsedMs != null && durationMs != null) {
-                sendPlayUpdateEvent(elapsedMs!!, durationMs!!)
+                sendPlayUpdateEvent(elapsedMs, durationMs)
               }
             } catch (e:Exception) {
               Log.e(TAG, TAG+"."+funcName+".playTimerTask.run() - " + e)
