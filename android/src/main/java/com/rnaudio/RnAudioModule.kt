@@ -115,7 +115,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     androidAudioEncoderId("androidAudioEncoderId"),
     androidAudioEncodingBitRate("androidAudioEncodingBitRate"),
     //--------
-    //Event detail and play/rec stop code keys
+    //Event detail and play/rec stop code, return value keys
     //++++++++
     isMuted("isMuted"),
     isRecording("isRecording"),
@@ -124,7 +124,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     recElapsedMs("recElapsedMs"),
     recMeterLevelDb("recMeterLevelDb"),
     playElapsedMs("playElapsedMs"),
-    playDurationMs("playDurationMs")
+    playDurationMs("playDurationMs"),
+    audioFilePath("audioFilePath"),
     //--------
   }
 
@@ -488,7 +489,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       // Hopefully the metadata will be in the saved files anyway.
       val grantedOptions = Arguments.createMap()
       //Cross-platform
-      grantedOptions.putString(Key.audioFileNameOrPath.str, "file:///{$_audioFilePathOrURL}")
+      grantedOptions.putString(Key.audioFilePath.str, "file:///{$_audioFilePathOrURL}")
       grantedOptions.putBoolean(Key.recMeteringEnabled.str, _recMeteringEnabled)
       grantedOptions.putDouble(Key.maxRecDurationSec.str, maxRecDurationSec)
       grantedOptions.putDouble(Key.sampleRate.str, _sampleRate.toDouble())
@@ -1125,7 +1126,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   private fun createRecStopResult(): WritableMap {
     val obj = Arguments.createMap()
     obj.putString(Key.recStopCode.str, _recStopCode.str)
-    obj.putString(Key.audioFileNameOrPath.str, "file:///${_audioFilePathOrURL}")
+    obj.putString(Key.audioFilePath.str, "file:///${_audioFilePathOrURL}")
     return obj
   }
   private fun sendRecStopEvent() {
@@ -1339,7 +1340,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     //Granted parameters: 
     //Cross-platform 
-    grantedOptions.putString(Key.audioFileNameOrPath.str, "file:///${_audioFilePathOrURL}")
+    grantedOptions.putString(Key.audioFilePath.str, "file:///${_audioFilePathOrURL}")
     grantedOptions.putBoolean(Key.recMeteringEnabled.str, _recMeteringEnabled)
     grantedOptions.putDouble(Key.maxRecDurationSec.str, maxRecDurationSec)
     grantedOptions.putDouble(Key.sampleRate.str, _sampleRate.toDouble())
