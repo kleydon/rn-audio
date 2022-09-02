@@ -20,18 +20,19 @@ yarn add 'rn-audio@https://github.com/kleydon/rn-audio'
 npx pod-install
 ```
 
-
 ## Post-installation:
 
-#### iOS
+### iOS
 You need to add a usage description to Info.plist:
 ```xml
 <key>NSMicrophoneUsageDescription</key>
 <string>$(PRODUCT_NAME) requires your permission to use the microphone.</string>
 ```
+NOTE: The Apple app-store review process requires that permission messages are clear and not misleading.
+
 Also, add a swift bridging header (if you don't have one already), for swift compatibility; see [here](https://javedmultani16.medium.com/adding-a-swift-bridging-header-b6b0a7ab895f) and [here](https://stackoverflow.com/questions/31716413/xcode-not-automatically-creating-bridging-header).
 
-#### Android
+### Android
 
 Add the following permissions to your application's `AndroidManifest.xml`:
 ```xml
@@ -68,6 +69,8 @@ const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
   console.log('recStop:', e)   
 }
 
+// NOTE! SubscriptionDuration impacts responsiveness, particularly for seekToPlayer(), below.
+// Choose a value that balances UI responsiveness with update frequency requirements
 setSubscriptionDuration(0.25)  // Rate of callbacks that fire during recording and playback.
                                // Defaults to 0.5
 
@@ -129,7 +132,7 @@ For specifying directory paths, file system navigation, transferring recordings,
 
 ### Options:
 
-Recording options are below; for a full list of options/types, see (here)[https://github.com/kleydon/rn-audio/blob/main/src/index.tsx]:
+Input `RecordingOptions` are listed below; for a full list of options/types, see (here)[https://github.com/kleydon/rn-audio/blob/main/src/index.tsx]:
 
 ```typescript
 export interface RecordingOptions {
@@ -161,6 +164,56 @@ export interface RecordingOptions {
 }
 ```
 
+## App-Level Considerations
+
+### App Lifecycle Events & Aborting Recording or Playback
+
+Depending on your app, you may wish to stop/cancel recording/playback in the event of a screen transition or the app going into the background. This library may be limited in what is possible, here, but its worth looking into ReactNative's [`AppState`](https://reactnative.dev/docs/appstate), and ReactNavigation's [`useFocusEffect()`](https://reactnavigation.org/docs/use-focus-effect/).  
+
+
+### Securing Audio Permissions
+
+#### Requesting Permission - Android
+
+Android above API/SDK 23 (Marshmellow) requires run-time permission to record audio; this can be addressed through use of [react-native-permissions](https://www.npmjs.com/package/react-native-permissions). Example:
+
+```ts
+if (Platform.OS === 'android') {
+  try {
+    const requestedPermissions = [
+      PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+    ]
+    const grantedPermissions = 
+      await PermissionsAndroid.requestMultiple(requestedPermissions)
+    console.log('grantedPermission: ', grantedPermissions)
+    if (
+      grants['android.permission.WRITE_EXTERNAL_STORAGE'] ===
+        PermissionsAndroid.RESULTS.GRANTED &&
+      grants['android.permission.READ_EXTERNAL_STORAGE'] ===
+        PermissionsAndroid.RESULTS.GRANTED &&
+      grants['android.permission.RECORD_AUDIO'] ===
+        PermissionsAndroid.RESULTS.GRANTED
+    ) {
+      console.log('All requested permissions granted')
+    } 
+    else {
+      console.log('One or more required permissions not granted')
+      return
+    }
+  } 
+  catch (err) {
+    console.warn(err)
+    return
+  }
+}
+```
+
+#### Requesting Permission - iOS
+While iOS _automatically_ requests a user's permission as audio is used (based on corresponding plist entries - see "Post-Intallation" above), it is still worth considering when it is best for a user to _experience_ permission requests, and perhaps artificially use audio so as to surface permission requests at opportune times for the user.
+
+
 ## Contributing
 
 See the [guide to contributing](CONTRIBUTING.md), to learn how to contribute to this repository and our development workflow.
@@ -186,7 +239,7 @@ Developing react-native modules is slow going; it is typically necessary to work
 
 **Don't cavalierly upgrade react-native; preview with (react-native upgrade helper)[https://react-native-community.github.io/upgrade-helper/]. Probably easier to rebuild the project with [create-react-native-library](https://github.com/callstack/react-native-builder-bob)!**
 
-### Set up
+## Set up
 
 Download the project repo, and run `yarn` from `rn-audio` project directory. (If re-installing, may need to delete `node_modules` and `yarn.lock` files in the `project` and `example` directories.)
 
@@ -195,40 +248,57 @@ Download the project repo, and run `yarn` from `rn-audio` project directory. (If
 From the `rn-audio` project directory, run `yarn example ios` and `yarn example android` to run on iOS and android emulators, respectively. You may need to run `npx pod-install` as well, to ensure the iOS project has its dependencies met.
 
 
-## Re-Creating the Library's Project Skeleton
+## Re-Creating the Library Project
 
-### Library skeleton set-up:
-
-  1. Run `npx create-react-native-library`
+  1. Run [`npx create-react-native-library`](https://github.com/callstack/react-native-builder-bob)
     ✔ What is the email address for the package author? … rn-audio@krispinleydon.net
     ✔ What is the URL for the package author? … https://github.com/kleydon/rn-audio
     ✔ What is the URL for the repository? … https://github.com/kleydon/rn-audio
     ✔ What type of library do you want to develop? › Native module
     ✔ Which languages do you want to use? › Kotlin & Swift
-  2. `cd` into the library's main project folder
-  3. Get started with the project:
-    `yarn`
-  4. Run example app on iOS:
+  2. `cd` into library's main project folder
+  3. Ensure a bridging header file exists within iOS project; tailor if needed. See [here](https://javedmultani16.medium.com/adding-a-swift-bridging-header-b6b0a7ab895f) and [here](https://stackoverflow.com/questions/31716413/xcode-not-automatically-creating-bridging-header).
+  4. Create / update .gitignore, to ignore `node_modules`, etc.
+  5. Add any 'native' project dependencies (and _their_ dependencies), with `yarn add <npm module or github repo>`
+  6. Install all project dependencies using `yarn` and `npx pod-install`. 
+     You may need to delete a `yarn.lock` file first
+  7. Add the *functional* swift/kotlin/typescript code to the library
+     * In the Android *Module.kt file: 
+      * Be sure the value of the `TAG` string matches the (PascalCase) name of the module
+      * In the module class declaration line, be sure to use **`private val`** reactContext`, so 
+        `reactContext` is available to class member functions
+  8. `cd` into library's `example` project folder, reprise steps 3 - 7 as needed.
+  9. `cd` back to the libraries main project folder
+  9. Run example app on iOS:
     `yarn example ios`
-  5. Run the example app on Android:
+  10. Run the example app on Android:
     `yarn example android`
-  6. Create / update .gitignore, to ignore `node_modules`, etc.
-  7. Add functional swift/kotlin/typescript code to the library
-
-### Gotchas:
-
-  * In the *Module.kt file: 
-    * Be sure the value of the `TAG` string matches the (PascalCase) name of the module
-    * In the module class declaration, be sure to use **private val** reactContext, so 
-      reactContext is available to class member functions
-  * In the XCode MODULE project - use the bridging header file.
-  * Ensure that a .gitignore file is preventing unnecessary repo bloat
 
 
-Upgrading react-native:
-  Could use https://react-native-community.github.io/upgrade-helper/
-  In reality, probably easier to start with a fresh react native project, using create-react-native-library
+## Upgrading react-native:
+  You _could_ use https://react-native-community.github.io/upgrade-helper/
+  Practically, **it is probably easier to start with a _fresh_ react native project, using [create-react-native-library](https://github.com/callstack/react-native-builder-bob)**
+
+
+## Issues / Improvement Ideas:
+
+* IOS: Currently, when a corrupt audio file fails to play, failure is silent. Figure out how to return a failure code here.
+
+* IOS: More nuanced route-change handling
+
+* IOS/Android: There may be various scenarios in which external events change accessibility to audio, in ways this library does not yet gracefully accomodate. Investigate, and address.
+
+* Record options are validated at the js/ts level; should they also be validated at the native level, in the spirit of defensive coding? (Could mean extra work / upkeep, if options always only accessed via the js/ts level...)
+
+* Playing from http: (as opposed to https) may not work; how to communicate this.
+
+* Playing from http/s involves delay. There should be (ideally) some feedback about this delay (e.g. Can I be informed _that_ I am waiting for a network process, and not just "hung"? Can I know _how long_ I need to wait?)
+
+* Consider adding a parameter for _automatically switching from paused to stopped_ after some maximum duration has passed, so that when recording wav files via Android's, AudioRecord isn't just spinning, (potentially using too much power (?)
+
+* Android: Consider doing EVERYTHING with  AudioRecord, and using converters after (during) the fact to get all the other formats. (Is this more limiting? More complex? More brittle? Does it result in delays? Or does it unify/simplify the framework - and provide lower-level access to audio data if this is needed in the future?)
+
+* Android: Consider handling timeout for AudioRecord-based recording in the same way as timeout is handled for MediaRecorder-based recording. (Advantages?)
 
 
 
-Made with [create-react-native-library](https://github.com/callstack/react-native-builder-bob)

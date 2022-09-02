@@ -19,6 +19,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   enum RecStopCode : String {
     case Requested
     case MaxDurationReached
+    case WasNotRecording
     case Error
   }
 
@@ -26,6 +27,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   enum PlayStopCode : String {
     case Requested
     case MaxDurationReached
+    case WasNotPlaying
     case Error
   }
 
@@ -52,7 +54,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     //Recording Option Keys
     //++++++++
     //Cross-platform
-    case audioFileNameOrPath
+    case fileNameOrPath
     case recMeteringEnabled
     case maxRecDurationSec
     case sampleRate
@@ -79,7 +81,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     case recMeterLevelDb
     case playElapsedMs
     case playDurationMs
-    case audioFilePath
+    case filePath
+    case filePathOrUrl
     //-------- 
   }
 
@@ -90,8 +93,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   let DEFAULT_MAX_REC_DURATION_SEC = 10.0
   let DEFAULT_SUBSCRIPTION_DURATION_SEC = 0.5
 
-  // Set this with resolveFilePathOrURL(). Can only be a URL when playing
-  var _audioFilePathOrURL: URL? = nil
+  // Set this with resolveFilePathOrUrl(). Can only be a URL when *playing*
+  var _filePathOrUrl: URL? = nil
 
   //Durations
   var _subscriptionDurationSec: Double = 0.5 // Initialized in constructor
@@ -136,16 +139,20 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   }
 
 
-  func createRecStopResult(recStopCode:RecStopCode) -> [String: Any] {
-    return [
-      Key.recStopCode.rawValue: recStopCode.rawValue,
-      Key.audioFilePath.rawValue: _audioFilePathOrURL?.absoluteString ?? ""
-    ] as [String : Any]
+  func createRecStopResult(recStopCode:RecStopCode, filePath:String?) -> [String: Any] {          
+    var recStopResult = [
+      Key.recStopCode.rawValue: recStopCode.rawValue,  
+    ] as [String: Any]
+    if (filePath != nil) {
+      recStopResult[Key.filePath.rawValue] = filePath      
+    }
+    return recStopResult
   }
 
   func sendRecStopEvent(recStopCode:RecStopCode) {
     sendEvent(withName: EventId.RecStop.rawValue, 
-                  body: createRecStopResult(recStopCode: recStopCode))
+                  body: createRecStopResult(recStopCode: recStopCode, 
+                                            filePath: _filePathOrUrl?.absoluteString ?? ""))
   }
 
   func sendRecUpdateEvent(elapsedMs:Double, isRecording:Bool, meterLevelDb:Float) {
@@ -166,16 +173,22 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     )
   }
 
-  func createPlayStopResult(playStopCode:PlayStopCode) -> [String: Any] {
-    return [
-      Key.playStopCode.rawValue: playStopCode.rawValue,
-      Key.audioFileNameOrPath.rawValue: _audioFilePathOrURL?.absoluteString ?? ""
-    ] as [String : Any]
+  func createPlayStopResult(playStopCode:PlayStopCode, filePathOrUrl:String?) -> [String: Any] {
+    var playStopResult = [
+      Key.playStopCode.rawValue: playStopCode.rawValue,  
+    ] as [String: Any]
+    if (filePathOrUrl != nil) {
+      playStopResult[Key.filePathOrUrl.rawValue] = filePathOrUrl
+    }
+    return playStopResult
   }
 
   func sendPlayStopEvent(playStopCode:PlayStopCode) {
+    let playStopResult = 
+        createPlayStopResult(playStopCode:playStopCode,
+                             filePathOrUrl: _filePathOrUrl?.absoluteString ?? "")
     sendEvent(withName: EventId.PlayStop.rawValue, 
-                  body: createPlayStopResult(playStopCode:playStopCode))
+                  body: playStopResult )
   }
 
     
@@ -188,9 +201,9 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
  
     
-  func isURLString(maybeURLString:String) -> Bool {
-    return (maybeURLString.hasPrefix("http://") ||
-            maybeURLString.hasPrefix("https://"))
+  func isUrlString(maybeUrlString:String) -> Bool {
+    return (maybeUrlString.hasPrefix("http://") ||
+            maybeUrlString.hasPrefix("https://"))
   }
     
 
@@ -203,10 +216,10 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   }
     
 
-  func resolveFilePathOrURL(rawFileNameOrPathOrURL: String?) -> URL {
-    let funcName = TAG + ".resolveFilePathOrURL()"
+  func resolveFilePathOrUrl(rawFileNameOrPathOrUrl: String?) -> URL {
+    let funcName = TAG + ".resolveFilePathOrUrl()"
     print(funcName)
-    let v = rawFileNameOrPathOrURL
+    let v = rawFileNameOrPathOrUrl
     if (v != nil && 
         (v!.hasPrefix("http://") || 
          v!.hasPrefix("https://") || 
@@ -338,7 +351,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     print("  Requested recordingOptions:", ro)
     print("    shared:")
-    print("      audioFileNameOrPath: ", ro[Key.audioFileNameOrPath.rawValue] as Any)
+    print("      audioFileNameOrPath: ", ro[Key.fileNameOrPath.rawValue] as Any)
     print("      recMeteringEnabled: ", ro[Key.recMeteringEnabled.rawValue] as Any)
     print("      maxRecDurationSec: ", ro[Key.maxRecDurationSec.rawValue] as Any)
     print("      sampleRate: ", ro[Key.sampleRate.rawValue] as Any)
@@ -356,7 +369,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     print("        lpcmIsNonInterleaved: ", ro[Key.appleAVLinearPCMIsNonInterleaved.rawValue] as Any)
 
     //Shared
-    _audioFilePathOrURL = resolveFilePathOrURL(rawFileNameOrPathOrURL: ro[Key.audioFileNameOrPath.rawValue] as? String ?? DEFAULT_FILE_NAME_PLACEHOLDER)
+    _filePathOrUrl = resolveFilePathOrUrl(rawFileNameOrPathOrUrl: ro[Key.fileNameOrPath.rawValue] as? String ?? DEFAULT_FILE_NAME_PLACEHOLDER)
     _recMeteringEnabled = (ro[Key.recMeteringEnabled.rawValue] as? Bool) ?? true
     _maxRecDurationSec = (ro[Key.maxRecDurationSec.rawValue] as? Double) ?? DEFAULT_MAX_REC_DURATION_SEC
     let sampleRate = ro[Key.sampleRate.rawValue] as? Int ?? 44100
@@ -375,7 +388,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
     print("  COERCED recordingOptions:")
     print("    shared:")
-    print("      audioFilePathOrURL: ", _audioFilePathOrURL!)
+    print("      filePathOrUrl: ", _filePathOrUrl!)
     print("      _recMeteringEnabled: ", _recMeteringEnabled)
     print("      maxRecDurationSec: ", _maxRecDurationSec)
     print("      sampleRate: ", sampleRate)
@@ -421,14 +434,14 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
         
       print("  ")
       print("  ")
-      print("  audioFilePathOrURL:", _audioFilePathOrURL!)
+      print("  filePathOrUrl:", _filePathOrUrl!)
       print("  ")
       print("  avAudioRecorderRequestedSettings:", avAudioRecorderRequestedSettings)
       print("  ")
       print("  ")
       
       do {
-        _audioRecorder = try AVAudioRecorder(url: _audioFilePathOrURL!, 
+        _audioRecorder = try AVAudioRecorder(url: _filePathOrUrl!, 
                                         settings: avAudioRecorderRequestedSettings)
         
         if (_audioRecorder == nil) {
@@ -444,7 +457,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
         //Begin set of granted recording options that will actually be used
         var grantedOptions = [
           //Cross-platform
-          Key.audioFilePath.rawValue: _audioFilePathOrURL!.absoluteString,
+          Key.filePath.rawValue: _filePathOrUrl!.absoluteString,
           Key.recMeteringEnabled.rawValue: _recMeteringEnabled,
           Key.maxRecDurationSec.rawValue: _maxRecDurationSec,
           Key.sampleRate.rawValue: _audioRecorder.settings[AVSampleRateKey]!,
@@ -564,15 +577,25 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     let funcName = TAG + ".stopRecorder(promise)"
     print(funcName)
     
+    // If wasn't recording...
     if (_audioRecorder == nil) {
-      return resolve(funcName + " Recorder already stopped.")
+      let recStopResult = 
+          createRecStopResult(recStopCode:RecStopCode.WasNotRecording, 
+                              filePath: nil)
+      return resolve(recStopResult)
     }
 
+    // Send event
     sendRecStopEvent(recStopCode: RecStopCode.Requested)
-      
+
+    // Stop recorder
     stopRecorder()
-    
-    return resolve(createRecStopResult(recStopCode:RecStopCode.Requested))
+
+    // Return result
+    let recStopResult = 
+        createRecStopResult(recStopCode:RecStopCode.Requested, 
+                            filePath: _filePathOrUrl?.absoluteString ?? "")
+    return resolve(recStopResult)
   }
   func stopRecorder() { // requested: Not due to error or timeout
     let funcName = TAG + ".stopRecorder()"
@@ -663,7 +686,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   @objc(startPlayer:httpHeaders:playbackVolume:resolver:rejecter:)
   public func startPlayer(
-    fileNameOrPathOrURL: String,
+    fileNameOrPathOrUrl: String,
     httpHeaders: [String: String],
     playbackVolume: Double,
     resolver resolve: @escaping RCTPromiseResolveBlock,
@@ -681,11 +704,11 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
             AVAudioSession.CategoryOptions.allowBluetooth
           ])
       try _audioSession.setActive(true)
-      _audioFilePathOrURL = resolveFilePathOrURL(rawFileNameOrPathOrURL: fileNameOrPathOrURL)
-      if (_audioFilePathOrURL!.isFileURL) {
-        try assertFileExists(filePath: _audioFilePathOrURL!.path)
+      _filePathOrUrl = resolveFilePathOrUrl(rawFileNameOrPathOrUrl: fileNameOrPathOrUrl)
+      if (_filePathOrUrl!.isFileURL) {
+        try assertFileExists(filePath: _filePathOrUrl!.path)
       }
-      _audioPlayerAsset = AVURLAsset(url: _audioFilePathOrURL!, 
+      _audioPlayerAsset = AVURLAsset(url: _filePathOrUrl!, 
                                      options: ["AVURLAssetHTTPHeaderFieldsKey": httpHeaders])
       _audioPlayerItem = AVPlayerItem(asset: _audioPlayerAsset!)
     } 
@@ -758,7 +781,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     _audioPlayer.play()
       
     return resolve([
-      Key.audioFileNameOrPath.rawValue: _audioFilePathOrURL!.absoluteString
+      Key.filePathOrUrl.rawValue: _filePathOrUrl!.absoluteString
     ] as [String : String])
   }
 
@@ -799,23 +822,36 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   ) -> Void {
     let funcName = TAG + ".stopPlayer()"
     print(funcName)
-    if (_audioPlayer == nil) {
-      return resolve(funcName + " Player is already stopped.")
-    }
-    _audioPlayer.pause()
+
+    //Remove observer
     self.removePeriodicTimeObserver()
-    self._audioPlayer = nil;
-    
-    //Send stop event
+
+    //If wasn't playing...
+    if (_audioPlayer == nil) {
+      let playStopResult = 
+          createPlayStopResult(playStopCode:PlayStopCode.WasNotPlaying,
+                               filePathOrUrl: nil)
+      return resolve(playStopResult)
+    }
+
+    //Send event
     sendPlayStopEvent(playStopCode:PlayStopCode.Requested)
-  
-    return resolve(createPlayStopResult(playStopCode:PlayStopCode.Requested))
+
+    //Stop player
+    _audioPlayer.pause()
+    self._audioPlayer = nil;
+
+    //Return result  
+    let playStopResult = 
+        createPlayStopResult(playStopCode:PlayStopCode.Requested,
+                             filePathOrUrl: _filePathOrUrl?.absoluteString ?? "")
+    return resolve(playStopResult)
   }
 
 
   @objc(seekToPlayer:resolve:rejecter:)
   public func seekToPlayer(
-    time: Double,
+    timeMs: Double,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
@@ -824,7 +860,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     if (_audioPlayer == nil) {
         return reject(TAG, funcName + " Player is not playing", nil)
     }
-    _audioPlayer.seek(to: CMTime(seconds: time / 1000, preferredTimescale: CMTimeScale(NSEC_PER_SEC)))
+    _audioPlayer.seek(to: CMTime(seconds: timeMs / 1000, preferredTimescale: CMTimeScale(NSEC_PER_SEC)))
     return resolve(funcName + " Seek successful")
   }
 

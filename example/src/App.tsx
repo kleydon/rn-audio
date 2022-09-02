@@ -1,5 +1,5 @@
 import {
-  Audio,
+  audio,
   RecordingOptions,
   AppleAVEncoderAudioQualityId,
   AppleAudioFormatId,
@@ -13,6 +13,10 @@ import {
   AndroidOutputFormatId,
   NumberOfChannelsId,
   ByteDepthId,
+  StopPlayerResult,
+  StopRecorderResult,
+  StartPlayerResult,
+  StartRecorderResult,
 } from 'rn-audio'
 import {
   AppState,
@@ -46,11 +50,11 @@ const recordingOptions:RecordingOptions = {
   //audioFileNameOrPath: 'https://download.samplelib.com/wav/sample-3s.wav'
 
   //Shared
-  audioFileNameOrPath: Platform.select({
-    ios: 'recording.m4a',
-    //ios: 'recording.wav',
-    android: 'recording.mp4',
-    //android: 'recording.wav',
+  fileNameOrPath: Platform.select({
+    //ios: 'recording.m4a',
+    ios: 'recording.wav',
+    //android: 'recording.mp4',
+    android: 'recording.wav',
   }),
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,
@@ -60,8 +64,8 @@ const recordingOptions:RecordingOptions = {
   encoderBitRate: 128000,
 
   //Apple-specific
-  appleAudioFormatId: AppleAudioFormatId.aac,
-  //appleAudioFormatId: AppleAudioFormatId.lpcm,
+  //appleAudioFormatId: AppleAudioFormatId.aac,
+  appleAudioFormatId: AppleAudioFormatId.lpcm,
   appleAVAudioSessionModeId: AppleAVAudioSessionModeId.measurement,
   //Apple encoded/compressed-specific
   appleAVEncoderAudioQualityId: AppleAVEncoderAudioQualityId.high,
@@ -71,10 +75,10 @@ const recordingOptions:RecordingOptions = {
   appleAVLinearPCMIsNonInterleaved: false,
 
   //Android-specific
-  androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
-  //androidOutputFormatId: AndroidOutputFormatId.WAV,
-  androidAudioEncoderId: AndroidAudioEncoderId.AAC,
-  //androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
+  //androidOutputFormatId: AndroidOutputFormatId.MPEG_4,
+  androidOutputFormatId: AndroidOutputFormatId.WAV,
+  //androidAudioEncoderId: AndroidAudioEncoderId.AAC,
+  androidAudioEncoderId: AndroidAudioEncoderId.LPCM,
   androidAudioSourceId: AndroidAudioSourceId.MIC,
   //Android WAV/LPCM specific
   //(None)
@@ -88,7 +92,6 @@ ilog('screenWidth: ', screenWidth)
 
 //const dirs = ReactNativeBlobUtil.fs.dirs
 
-const audio = new Audio();
 audio.setSubscriptionDuration(0.25) // optional; default is (0.5)
 
 
@@ -100,7 +103,7 @@ export default function App(): ReactElement {
   //   then brings it back when app is foregrounded again
   const appState = useRef(AppState.currentState)
   useEffect(() => {
-    const subscription = 
+    const appStateEventSubscription = 
       AppState.addEventListener('change', nextAppState => {
       if (appState.current.match(/active/) &&
           nextAppState.match(/inactive|background/)) {
@@ -111,7 +114,7 @@ export default function App(): ReactElement {
       appState.current = nextAppState
     })
     return () => {
-      subscription.remove()
+      appStateEventSubscription.remove()
     }
   }, [])
 
@@ -127,8 +130,6 @@ export default function App(): ReactElement {
   if (Number.isFinite(playWidth)==false || Number.isNaN(playWidth) ) {
     playWidth = 0
   }
-  ilog('playWidth:'+ playWidth) 
-
 
   const ifAndroidEnsurePermissionsSecured = useCallback(async ():Promise<boolean> => {
     const funcName = 'app.ifAndroidEnsurePermissionsSecured()'
@@ -189,7 +190,7 @@ export default function App(): ReactElement {
       }
       return
     }
-    const [err, res] = await to<object|string>(audio.startRecorder({
+    const [err, res] = await to<StartRecorderResult>(audio.startRecorder({
       recordingOptions,
       recUpdateCallback,
       recStopCallback
@@ -234,7 +235,7 @@ export default function App(): ReactElement {
   const onStopRecord = useCallback(async ():Promise<void> => {
     const funcName = 'app.onStopRecord()'
     ilog(funcName)
-    const [err, res] = await to<object|string>(audio.stopRecorder())
+    const [err, res] = await to<StopRecorderResult>(audio.stopRecorder())
     if (err) {
       const errMsg = funcName + ' - Error: ' + err
       elog(errMsg)
@@ -251,7 +252,7 @@ export default function App(): ReactElement {
   const onStartPlay = useCallback(async ():Promise<void> => {
     const funcName = 'app.onStartPlay()'
     ilog(funcName)
-    const playUpdateCallback = (e: PlayUpdateMetadata) => {
+    const playUpdateCallback = async (e: PlayUpdateMetadata) => {
       ilog('app.playUpdateEventCallback() - metadata: ', e)
       setPlaybackElapsedMs(e.playElapsedMs)
       setPlaybackElapsedStr(audio.mmssss(Math.floor(e.playElapsedMs)))
@@ -268,8 +269,8 @@ export default function App(): ReactElement {
       }
       return
     }
-    const [err, res] = await to<string>(audio.startPlayer({
-      fileNameOrPathOrURL: recordingOptions.audioFileNameOrPath,
+    const [err, res] = await to<StartPlayerResult>(audio.startPlayer({
+      fileNameOrPathOrURL: recordingOptions.fileNameOrPath,
       playUpdateCallback,
       playStopCallback,
       playVolume: 1.0,
@@ -317,7 +318,7 @@ export default function App(): ReactElement {
     ilog(funcName)
     setPlaybackElapsedMs(0)
     setPlaybackElapsedStr(audio.mmssss(0))
-    const [err, res] = await to<string>(audio.stopPlayer())
+    const [err, res] = await to<StopPlayerResult>(audio.stopPlayer())
     if (err) {
       const errStr = funcName + ': ' + err
       elog(errStr)

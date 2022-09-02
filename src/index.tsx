@@ -147,7 +147,7 @@ export enum RecorderState {
 
 export interface RecordingOptions {
   
-  audioFileNameOrPath?: string,
+  fileNameOrPath?: string,
   recMeteringEnabled?: boolean,
   maxRecDurationSec?: number,
   sampleRate?: number,
@@ -193,12 +193,12 @@ export enum PlayStopCode {
 }
 
 export type RecStopMetadata = {
-  audioFilePath?: string,
+  audioFilePath?: string,  // Available if recStopCode !== "Error"
   recStopCode: RecStopCode,
 }
 
 export type PlayStopMetadata = {
-  audioFilePath?: string,
+  audioFilePath?: string,  // Available ****TRUE?****** if recStopCode !== "Error"
   playStopCode: PlayStopCode,
 }
 
@@ -221,12 +221,22 @@ interface StartPlayerArgs {
   playStopCallback?: ((playStopMetadata: PlayStopMetadata) => void) | null
   playVolume?: number 
 }
+export type StartPlayerResult = {
+  filePathOrURL: string, 
+}
+export type StopPlayerResult = PlayStopMetadata
+
 
 interface StartRecorderArgs {
   recordingOptions: RecordingOptions,
   recUpdateCallback?: ((recUpdateMetadata: RecUpdateMetadata) => void) | null
   recStopCallback?: ((recStopMetadata: RecStopMetadata) => void) | null
 }
+export interface StartRecorderResult extends Omit<RecordingOptions, 'fileNameOrPath'> {
+  filePath: string
+}
+export type StopRecorderResult = RecStopMetadata
+
 
 const ilog = console.log
 // @ts-ignore
@@ -241,12 +251,19 @@ const pad = (num: number): string => {
 const DEFAULT_WAV_FILE_NAME = 'recording.wav'
 const DEFAULT_FILE_NAME_PLACEHOLDER = 'DEFAULT'  //Keep snyced w/ native implementations
 
+
+/**
+ * Audio class.
+ * Consider using this module's provided `audio` instance (at the bottom of this file) as a singleton, 
+ * rather than creating new/multiple instances of this class.
+ */
 export class Audio {
   private _playUpdateCallback: ((playUpdateMetadata: PlayUpdateMetadata) => void) | null
   private _recUpdateSubscription: EmitterSubscription | null
   private _recStopSubscription: EmitterSubscription | null
   private _playUpdateScription: EmitterSubscription | null
   private _playStopSubscription: EmitterSubscription | null
+
   constructor() {
     this._playUpdateCallback = null
     this._recStopSubscription = null
@@ -266,7 +283,7 @@ export class Audio {
     ilog('index.resolveAndValidateRecordingOptions()')
     
     const ro = recordingOptions
-    var lcFileNameOrPath = ro.audioFileNameOrPath?.toLowerCase()
+    var lcFileNameOrPath = ro.fileNameOrPath?.toLowerCase()
 
     ilog('Validating recording options...')
 
@@ -355,9 +372,9 @@ export class Audio {
            ro.androidOutputFormatId === AndroidOutputFormatId.WAV) ||
           (Platform.OS === 'ios' &&
            ro.appleAudioFormatId === AppleAudioFormatId.lpcm)) {
-        ro.audioFileNameOrPath = DEFAULT_WAV_FILE_NAME
-        lcFileNameOrPath = ro.audioFileNameOrPath.toLowerCase()  // Update lowercase version
-        ilog('Format/encoding are for .wav; coercing (empty) audioFileNameOrPath to: ', ro.audioFileNameOrPath)
+        ro.fileNameOrPath = DEFAULT_WAV_FILE_NAME
+        lcFileNameOrPath = ro.fileNameOrPath.toLowerCase()  // Update lowercase version
+        ilog('Format/encoding are for .wav; coercing (empty) fileNameOrPath to: ', ro.fileNameOrPath)
       }
     }
 
@@ -479,7 +496,7 @@ export class Audio {
     const funcName = 'index.addRecStopCallback()'
     ilog(funcName)
     //Ensure recording-related callbacks get removed when recording stops
-    const augmentedCallback = (recStopMetadata: RecStopMetadata) => {
+    const augmentedCallback = async (recStopMetadata: RecStopMetadata) => {
       this.removeRecUpdateCallback()
       this.removeRecStopCallback()
       if (callback) { callback(recStopMetadata) }
@@ -531,7 +548,7 @@ export class Audio {
     const funcName = 'index.addPlayStopCallback()'
     ilog(funcName)
     //Ensure play-related callbacks get removed when playing stops
-    const augmentedCallback = (playStopMetadata: PlayStopMetadata) => {
+    const augmentedCallback = async (playStopMetadata: PlayStopMetadata) => {
       this.removePlayUpdateCallback()
       this.removePlayStopCallback()
       if (callback) { callback(playStopMetadata) }
@@ -581,7 +598,8 @@ export class Audio {
       ilog(funcName + ' - recorderState: ' + recorderState)
       if (recorderState != RecorderState.Stopped && dontCallStop === false) {
         ilog(funcName + ' - calling stopRecorder()')
-        await this.stopRecorder()  
+        const silently = true
+        await this.stopRecorder(silently)  
       }  
     }
     catch (e) {
@@ -597,13 +615,13 @@ export class Audio {
   /**
    * Start recording
    * @param {StartRecorderArgs} startRecorderArgs param.
-   * @returns {Promise<string>}
+   * @returns {Promise<StartRecorderResult>}
    */
   startRecorder = async ({
     recordingOptions,
     recUpdateCallback,
     recStopCallback = null
-  }:StartRecorderArgs): Promise<object|string> => {
+  }:StartRecorderArgs): Promise<StartRecorderResult> => {
     const funcName = 'index.startRecorder()'
     ilog(funcName)
 
@@ -625,7 +643,7 @@ export class Audio {
     this.addRecStopCallback(recStopCallback) //MUST call - even recStopCallback is null
 
     // Call RnAudio.startRecorder
-    const [err, res] = await to<string>(RnAudio.startRecorder(recordingOptions))
+    const [err, res] = await to<StartRecorderResult>(RnAudio.startRecorder(recordingOptions))
     if (err) {
       const errStr = funcName + ' - ' + err
       elog(errStr)
@@ -686,22 +704,23 @@ export class Audio {
 
   /**
    * stop recording.
-   * @returns {Promise<string>}
+   * @returns {Promise<StopRecorderResult>}
    */
-  stopRecorder = async (): Promise<object|string> => {
+  stopRecorder = async (silent?:boolean): Promise<StopRecorderResult> => {
     const funcName = 'index.stopRecorder()'
     ilog(funcName)
     this.removeRecUpdateCallback()
     //NOTE: RecStopCallback gets removed when recStopCallback fires; see addRecStopCallback
-    const [err, res] = await to<object|string>(RnAudio.stopRecorder())
+    const [err, res] = await to<StopRecorderResult>(RnAudio.stopRecorder())
     if (err) {
       const errStr = funcName + ' - ' + err
       elog(errStr)
       await this.resetRecorder(true)
       return Promise.reject(errStr)
     }
-
-    ilog(funcName + ' - Result: ', res)
+    if (silent !== true) {
+      ilog(funcName + ' - Result: ', res)
+    }
     return res
   }
 
@@ -727,8 +746,7 @@ export class Audio {
   /**
    * Start playing with param.
    * @param {StartPlayerArgs} startPlayerArgs params.
-   * @param {Record<string, string>} httpHeaders Set of http headers.
-   * @returns {Promise<string>}
+   * @returns {Promise<StartPlayerResult>}
    */
   startPlayer = async ({
     fileNameOrPathOrURL = DEFAULT_FILE_NAME_PLACEHOLDER,
@@ -736,7 +754,7 @@ export class Audio {
     playUpdateCallback,
     playStopCallback = null,
     playVolume: playbackVolume = 1.0
-  }:StartPlayerArgs): Promise<string> => {
+  }:StartPlayerArgs): Promise<StartPlayerResult> => {
     const funcName = 'index.startPlayer()'
     ilog(funcName)
 
@@ -760,7 +778,7 @@ export class Audio {
     this.addPlayStopCallback(playStopCallback) //MUST call - even playStopCallback is null
 
     ilog(funcName + ' - calling RnAudio.startPlayer()')
-    const [err, res] = await to<string>(
+    const [err, res] = await to<StartPlayerResult>(
         RnAudio.startPlayer(fileNameOrPathOrURL, httpHeaders, playbackVolume)
     )
     if (err) {
@@ -825,14 +843,14 @@ export class Audio {
 
   /**
    * Stops player
-   * @returns {Promise<string>}
+   * @returns {Promise<StopPlayerResult>}
    */
-  stopPlayer = async (): Promise<string> => {
+  stopPlayer = async (): Promise<StopPlayerResult> => {
     const funcName = 'index.stopPlayer()'
     ilog(funcName)
     this.removePlayUpdateCallback()
     //NOTE: PlayStopCallback gets removed when playStopCallback fires; see addRecStopCallback
-    const [err, res] = await to<string>(RnAudio.stopPlayer())
+    const [err, res] = await to<StopPlayerResult>(RnAudio.stopPlayer())
     if (err) {
       const errStr = funcName + '- ' + err
       elog(errStr)
@@ -846,10 +864,10 @@ export class Audio {
   /**
    * Seek to a particular time in a recording. Doesn't currently
    * work when playback is stopped; only when playing or paused.
-   * @param {number} time position seek to in millisecond.
+   * @param {number} timeMs position seek to in millisecond.
    * @returns {Promise<string>}
    */
-  seekToPlayer = async (time: number): Promise<string> => {
+  seekToPlayer = async (timeMs: number): Promise<string> => {
     const funcName = 'index.seekToPlayer()'
     ilog(funcName)
     const playerState = await this.getPlayerState()
@@ -857,7 +875,7 @@ export class Audio {
     if (playerState === PlayerState.Stopped) {
       Promise.resolve(funcName + ' - Can\'t seek; player isn\'t playing')      
     }
-    const [err, res] = await to<string>(RnAudio.seekToPlayer(time))
+    const [err, res] = await to<string>(RnAudio.seekToPlayer(timeMs))
     if (err) {
       const errStr = funcName + ' - ' + err
       elog(errStr)
@@ -912,6 +930,8 @@ export class Audio {
 
 }
 
+//Export one instance
+export const audio = new Audio()
 
 
 
