@@ -41,7 +41,7 @@ RCT_EXTERN_METHOD(pausePlayer:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(stopPlayer:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject);
 
-RCT_EXTERN_METHOD(seekToPlayer:(nonnull double*) time
+RCT_EXTERN_METHOD(seekToPlayer:(nonnull double*) timeMs
                   resolve:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject);
 

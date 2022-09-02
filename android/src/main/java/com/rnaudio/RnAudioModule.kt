@@ -77,12 +77,14 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   enum class RecStopCode(val str: String) {
     Requested("Requested"),  //By user, or app; not due to error or timeout
     MaxDurationReached("MaxDurationReached"),
+    WasNotRecording("WasNotRecording"),
     Error("Error")
   }
 
   enum class PlayStopCode(val str: String) {
     Requested("Requested"),  //By user, or app; not due to error or timeout
     MaxDurationReached("MaxDurationReached"),
+    WasNotPlaying("WasNotPlaying"),
     Error("Error")
   }
 
@@ -102,7 +104,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     //Recording Option Keys
     //++++++++
     //Cross-platform
-    audioFileNameOrPath("audioFileNameOrPath"),
+    fileNameOrPath("fileNameOrPath"),
     recMeteringEnabled("recMeteringEnabled"),
     maxRecDurationSec("maxRecDurationSec"),
     sampleRate("sampleRate"),
@@ -125,12 +127,13 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     recMeterLevelDb("recMeterLevelDb"),
     playElapsedMs("playElapsedMs"),
     playDurationMs("playDurationMs"),
-    audioFilePath("audioFilePath"),
+    filePath("filePath"),
+    filePathOrUrl("filePathOrUrl"),
     //--------
   }
 
-  // Set this with resolveFilePathOrURL(). Can only be a URL when playing; not recording
-  private var _audioFilePathOrURL:String = ""
+  // Set this with resolveFilePathOrUrl(). Can only be a url when playing; not recording
+  private var _filePathOrUrl:String = ""
 
   private var _recMeteringEnabled = false
   private var _sampleRate:Int = 44100
@@ -277,7 +280,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   fun getRecorderState():RecorderState {
       Log.d(TAG, "getRecorderState()")
 
-    if (encodingAsLPCM(_audioFilePathOrURL)) {
+    if (encodingAsLPCM(_filePathOrUrl)) {
       if (_audioRecord == null) {
         Log.d(TAG, "  getRecorderState() - stopped")
         return RecorderState.Stopped
@@ -334,7 +337,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     val ro = recordingOptions
     val fileNameOrPath = 
-      if (ro.hasKey(Key.audioFileNameOrPath.str)) ro.getString(Key.audioFileNameOrPath.str)!! 
+      if (ro.hasKey(Key.fileNameOrPath.str)) ro.getString(Key.fileNameOrPath.str)!! 
       else DEFAULT_FILE_NAME_PLACEHOLDER
 
     //If recording LPCM
@@ -364,8 +367,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     //Set/coerce recording options
 
     //Cross-platform
-    _audioFilePathOrURL = resolveFilePathOrURL(
-      rawFileNameOrPathOrURL = fileNameOrPath,
+    _filePathOrUrl = resolveFilePathOrUrl(
+      rawFileNameOrPathOrUrl = fileNameOrPath,
       isWav = false
     )
     _recMeteringEnabled = if (ro.hasKey(Key.recMeteringEnabled.str)) ro.getBoolean(Key.recMeteringEnabled.str) else true
@@ -382,7 +385,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     Log.d(TAG, " ")
     Log.d(TAG, "Coerced:")
-    Log.d(TAG, "  audioFilePathOrURL: " + _audioFilePathOrURL)
+    Log.d(TAG, "  filePathOrUrl: " + _filePathOrUrl)
     Log.d(TAG, "  recMeteringEnabled: " + _recMeteringEnabled)
     Log.d(TAG, "  maxRecDurationSec: " + maxRecDurationSec)
     Log.d(TAG, "  sampleRate:" + _sampleRate)
@@ -403,7 +406,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       }
     }
 
-    _mediaRecorder!!.setOutputFile(_audioFilePathOrURL)
+    _mediaRecorder!!.setOutputFile(_filePathOrUrl)
     _mediaRecorder!!.setAudioSamplingRate(_sampleRate)
     _mediaRecorder!!.setAudioChannels(_numChannels)
     _mediaRecorder!!.setAudioSource(audioSourceId)
@@ -489,7 +492,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       // Hopefully the metadata will be in the saved files anyway.
       val grantedOptions = Arguments.createMap()
       //Cross-platform
-      grantedOptions.putString(Key.audioFilePath.str, "file:///{$_audioFilePathOrURL}")
+      grantedOptions.putString(Key.filePath.str, "file:///$_filePathOrUrl")
       grantedOptions.putBoolean(Key.recMeteringEnabled.str, _recMeteringEnabled)
       grantedOptions.putDouble(Key.maxRecDurationSec.str, maxRecDurationSec)
       grantedOptions.putDouble(Key.sampleRate.str, _sampleRate.toDouble())
@@ -499,7 +502,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       grantedOptions.putDouble(Key.androidAudioSourceId.str, audioSourceId.toDouble())
       grantedOptions.putDouble(Key.androidOutputFormatId.str, outputFormatId.toDouble())
       grantedOptions.putDouble(Key.androidAudioEncoderId.str, audioEncoderId.toDouble())
-      promise.resolve(grantedOptions)
+      return promise.resolve(grantedOptions)
     } 
     catch (e: Exception) {
       _recStopCode = RecStopCode.Error
@@ -516,7 +519,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     Log.d(TAG, funcName)
 
     //If recording LPCM
-    if (encodingAsLPCM(_audioFilePathOrURL)) {
+    if (encodingAsLPCM(_filePathOrUrl)) {
       Log.d(TAG, funcName + " - calling RnAudio.pauseLPCMRecorder()")
       return pauseLPCMRecorder(promise)
     }
@@ -554,7 +557,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     Log.d(TAG, funcName)
 
     //If recording LPCM
-    if (encodingAsLPCM(_audioFilePathOrURL)) {
+    if (encodingAsLPCM(_filePathOrUrl)) {
       Log.d(TAG, funcName + " - calling RnAudio.resumeLPCMRecorder()")
       return resumeLPCMRecorder(promise)
     }
@@ -589,31 +592,38 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     Log.d(TAG, funcName)
 
     //If recording LPCM
-    if (encodingAsLPCM(_audioFilePathOrURL)) {
+
+    if (encodingAsLPCM(_filePathOrUrl)) {
       Log.d(TAG, funcName + " - calling RnAudio.stopLPCMRecorder()")
       return stopLPCMRecorder(promise)
     }
 
     //NOT recording LPCM
 
+    // Remove recording callback
     if (_recordHandler != null) {
       _recorderRunnable?.let { _recordHandler!!.removeCallbacks(it) }
     }
 
+    //If wasn't recording...
     if (_mediaRecorder == null) {
-      return promise.resolve(funcName + " Recorder already stopped.")
+      return promise.resolve(createRecStopResult(RecStopCode.WasNotRecording, null))
     }
 
     try {
-      resetMediaRecorder()
+      // Send event
       sendRecStopEvent()
+
+      // Stop recorder
+      resetMediaRecorder()
     } 
     catch (e: Exception) {
       Log.d(TAG, funcName + " - " + e)
       return promise.reject(funcName, "" + e)
     }
 
-    return promise.resolve(createRecStopResult())
+    // Return result
+    return promise.resolve(createRecStopResult(_recStopCode, _filePathOrUrl))
   }
 
 
@@ -809,13 +819,16 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     val funcName = TAG + ".stopLPCMRecorder()" 
     Log.d(TAG, funcName)
 
+    // Remove record callback
     if (_recordHandler != null) {
       Log.d(TAG, funcName + " - removing record callbacks")
       _recorderRunnable?.let { _recordHandler!!.removeCallbacks(it) }
     }
 
+    // If wasn't recording...
     if (getRecorderState() == RecorderState.Stopped) {
-      return promise.resolve(funcName + " - recorder already stopped (audioRecord is null).")
+      val recStopResult = createRecStopResult(RecStopCode.WasNotRecording, null)
+      return promise.resolve(recStopResult)
     }
 
     //Clarify cause of stoppage
@@ -831,9 +844,11 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       Thread.sleep(10)
     }
 
+    // Send event
     sendRecStopEvent()
 
-    return promise.resolve(createRecStopResult())
+    // Return result
+    return promise.resolve(createRecStopResult(_recStopCode, _filePathOrUrl))
   }
 
 
@@ -881,7 +896,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     }
     else if (playerState == PlayerState.Paused) {
       _mediaPlayer?.start()
-      return promise.resolve(_audioFilePathOrURL)
+      return promise.resolve(_filePathOrUrl)
     }
     else { //PlayerState.Stopped
       _mediaPlayer = MediaPlayer()
@@ -899,9 +914,9 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       return promise.reject(msgPrefix, errMsg)
     }
 
-    // NOTE: If rawFileNameOrPathOrURL is "DEFAULT"/""/null, defaults to non-wav, here; this could go wrong...
+    // NOTE: If rawFileNameOrPathOrUrl is "DEFAULT"/""/null, defaults to non-wav, here; this could go wrong...
     var resolvedFilePathOrUrl = 
-      resolveFilePathOrURL(rawFileNameOrPathOrURL = fileNameOrPathOrUrl, isWav = false)
+      resolveFilePathOrUrl(rawFileNameOrPathOrUrl = fileNameOrPathOrUrl, isWav = false)
     
     try {
       if (httpHeaders != null) {
@@ -964,15 +979,25 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
         sendPlayStopEvent(PlayStopCode.MaxDurationReached)
       }
 
-      //Add route change listener
-      if (_routingChangedListener != null) {
-        Log.d(TAG, funcName + " Adding routing changed listener... ")
-        _mediaPlayer!!.addOnRoutingChangedListener(_routingChangedListener, null) 
+      _mediaPlayer!!.setOnPreparedListener { _ ->
+        
+        _mediaPlayer!!.start()
+
+        //Add route change listener after starting
+        // *** STILL FIRES, HERE. EITHER NEED TO GET IT TO STOP FIRING, OR ELSE
+        //     VERIFY THAT THE ROUTE CHANGED TO IS ACCEPTABLE. LEAVING THIS FOR
+        //     LATER ***
+        // if (_routingChangedListener != null) {
+        //   Log.d(TAG, funcName + " Adding routing changed listener... ")
+        //   _mediaPlayer!!.addOnRoutingChangedListener(_routingChangedListener, null) 
+        // }
       }
 
-      _mediaPlayer!!.prepare()
+      _mediaPlayer!!.prepareAsync()
 
-      return promise.resolve(resolvedFilePathOrUrl)
+      val res = Arguments.createMap()
+      res.putString(Key.filePathOrUrl.str, resolvedFilePathOrUrl)
+      return promise.resolve(res)
     } 
     catch (e:Exception) { 
       sendPlayStopEvent(PlayStopCode.Error)
@@ -1045,17 +1070,28 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   fun stopPlayer(promise: Promise) {
     val funcName = TAG + ".stopPlayer()"
     Log.d(TAG, funcName)
+    
+    // Remove timer
     if (_playUpdateTimer != null) {
       _playUpdateTimer!!.cancel()
     }
+
+    // If already stopped...
     if (getPlayerState() == PlayerState.Stopped) {
-      return promise.resolve(funcName + " - Player already stopped")
+      val playStopResult = createPlayStopResult(PlayStopCode.WasNotPlaying, null)
+      return promise.resolve(playStopResult)
     }
+
     try { 
+      //Send event
       sendPlayStopEvent(PlayStopCode.Requested)
+      //Stop player
       resetMediaPlayer()
-      return promise.resolve(funcName + " - Stopped player.")
-    } catch (e:Exception) {
+      //Return result
+      val playStopResult = createPlayStopResult(PlayStopCode.Requested, _filePathOrUrl)
+      return promise.resolve(playStopResult)
+    } 
+    catch (e:Exception) {
       val msgPrefix = funcName + ": "
       val errMsg = "Error: " + e.message
       Log.e(TAG, msgPrefix + errMsg)
@@ -1065,14 +1101,14 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
 
   @ReactMethod
-  fun seekToPlayer(time: Double, promise: Promise) {
+  fun seekToPlayer(timeMs: Double, promise: Promise) {
     val funcName = TAG + ".seekToPlayer()"
     Log.d(TAG, funcName)
     if (getPlayerState() == PlayerState.Stopped) {
       return promise.reject(funcName, "Player stopped on seek.")
     }
     try {
-      _mediaPlayer!!.seekTo(time.toInt())
+      _mediaPlayer!!.seekTo(timeMs.toInt())
     }
     catch (e:Exception) {
       val msgPrefix = funcName + ": "
@@ -1095,11 +1131,17 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
   // Helper methods
 
+  private fun isUrl(fileNameOrPathOrUrl: String?):Boolean {
+    val v = fileNameOrPathOrUrl
+    return (v != null &&
+        (v.startsWith("http://") || 
+         v.startsWith("https://")))
+  }
 
-  private fun resolveFilePathOrURL(rawFileNameOrPathOrURL: String?, isWav:Boolean):String {
-    val funcName = TAG + ".resolveFilePathOrURL()"
+  private fun resolveFilePathOrUrl(rawFileNameOrPathOrUrl: String?, isWav:Boolean):String {
+    val funcName = TAG + ".resolveFilePathOrUrl()"
     Log.d(TAG, funcName)
-    val v = rawFileNameOrPathOrURL
+    val v = rawFileNameOrPathOrUrl
     if (v != null &&
         (v.startsWith("http://") || 
          v.startsWith("https://") || 
@@ -1123,14 +1165,17 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   }
 
 
-  private fun createRecStopResult(): WritableMap {
+  private fun createRecStopResult(recStopCode:RecStopCode, filePath:String?): WritableMap {
     val obj = Arguments.createMap()
-    obj.putString(Key.recStopCode.str, _recStopCode.str)
-    obj.putString(Key.audioFilePath.str, "file:///${_audioFilePathOrURL}")
+    obj.putString(Key.recStopCode.str, recStopCode.str)
+    if (filePath !== null) {
+      obj.putString(Key.filePath.str, "file:///$filePath")
+    }
     return obj
   }
   private fun sendRecStopEvent() {
-    sendEvent(reactContext, Event.RecStop.str, createRecStopResult())
+    sendEvent(reactContext, Event.RecStop.str, 
+              createRecStopResult(_recStopCode, _filePathOrUrl))
   }
 
 
@@ -1145,14 +1190,18 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   }
 
 
-  private fun createPlayStopResult(playStopCode: PlayStopCode): WritableMap {
+  private fun createPlayStopResult(playStopCode: PlayStopCode, filePathOrUrl:String?): WritableMap {
     val obj = Arguments.createMap()
     obj.putString(Key.playStopCode.str, playStopCode.str)
-    obj.putString(Key.audioFileNameOrPath.str, "file:///${_audioFilePathOrURL}")
+    if (filePathOrUrl !== null) {
+      var revisedFilePathOrUrl = 
+          if (isUrl(filePathOrUrl)) "$filePathOrUrl" else "file:///$filePathOrUrl" 
+      obj.putString(Key.filePathOrUrl.str, revisedFilePathOrUrl)
+    }
     return obj
   }
   private fun sendPlayStopEvent(playStopCode: PlayStopCode) {
-    sendEvent(reactContext, Event.PlayStop.str, createPlayStopResult(playStopCode))
+    sendEvent(reactContext, Event.PlayStop.str, createPlayStopResult(playStopCode, _filePathOrUrl))
   }
 
 
@@ -1259,8 +1308,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     //Set/coerce recording options
     val ro = requestedOptions
-    _audioFilePathOrURL = resolveFilePathOrURL(
-      rawFileNameOrPathOrURL = (if (ro.hasKey(Key.audioFileNameOrPath.str)) ro.getString(Key.audioFileNameOrPath.str)!! else DEFAULT_FILE_NAME_PLACEHOLDER),
+    _filePathOrUrl = resolveFilePathOrUrl(
+      rawFileNameOrPathOrUrl = (if (ro.hasKey(Key.fileNameOrPath.str)) ro.getString(Key.fileNameOrPath.str)!! else DEFAULT_FILE_NAME_PLACEHOLDER),
       isWav = true // is a wav file
     )
     _recMeteringEnabled = if (ro.hasKey(Key.recMeteringEnabled.str)) ro.getBoolean(Key.recMeteringEnabled.str) else true
@@ -1277,7 +1326,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     Log.d(TAG, " ")
     Log.d(TAG, "Coerced:")
-    Log.d(TAG, "  audioFilePathOrURL: " + _audioFilePathOrURL)
+    Log.d(TAG, "  filePathOrUrl: " + _filePathOrUrl)
     Log.d(TAG, "  recMeteringEnabled: " + _recMeteringEnabled)
     Log.d(TAG, "  maxRecDurationSec: " + maxRecDurationSec)
     Log.d(TAG, "  sampleRate:" + _sampleRate)
@@ -1340,7 +1389,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     //Granted parameters: 
     //Cross-platform 
-    grantedOptions.putString(Key.audioFilePath.str, "file:///${_audioFilePathOrURL}")
+    grantedOptions.putString(Key.filePath.str, "file:///$_filePathOrUrl")
     grantedOptions.putBoolean(Key.recMeteringEnabled.str, _recMeteringEnabled)
     grantedOptions.putDouble(Key.maxRecDurationSec.str, maxRecDurationSec)
     grantedOptions.putDouble(Key.sampleRate.str, _sampleRate.toDouble())
@@ -1360,16 +1409,16 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     val funcName = TAG + ".saveAsWav()" 
     Log.d(TAG, funcName)
 
-    if (_tempRawPCMDataFilePath == null  || _audioFilePathOrURL == "" || _audioFilePathOrURL == "DEFAULT") {
+    if (_tempRawPCMDataFilePath == null  || _filePathOrUrl == "" || _filePathOrUrl == "DEFAULT") {
       throw Exception(funcName+ ": Null or empty file path.")
     }
 
-    Log.d(TAG, funcName + ": Saving " + _audioFilePathOrURL + "...")
+    Log.d(TAG, funcName + ": Saving " + _filePathOrUrl + "...")
 
     //Write wav file
     //Approach: https://medium.com/@sujitpanda/file-read-write-with-kotlin-io-31eff564dfe3
     var fileInputStream = FileInputStream(_tempRawPCMDataFilePath!!)
-    var fileOutputStream = FileOutputStream(File(_audioFilePathOrURL), false)
+    var fileOutputStream = FileOutputStream(File(_filePathOrUrl), false)
     fileInputStream.use { fis:FileInputStream ->
       fileOutputStream.use { fos:FileOutputStream ->
         //Header
@@ -1377,7 +1426,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
         addWavHeader(fileOutputStream, numSampleDataBytes)
         //Data
         fileInputStream.copyTo(fileOutputStream)
-        Log.d(TAG, funcName + ": wav file path:" + _audioFilePathOrURL)
+        Log.d(TAG, funcName + ": wav file path:" + _filePathOrUrl)
         Log.d(TAG, funcName + ": wav file size:" + fos.getChannel().size())
         fos.flush()
         fos.close()
