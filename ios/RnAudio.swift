@@ -69,9 +69,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     case appleAVLinearPCMIsFloatKeyIOS
     case appleAVLinearPCMIsNonInterleaved
     //-------- 
-    //Other
-    case grantedOptions
-    //Event detail and play/rec stop code keys
+    //Event detail and play/rec stop code keys, return value keys
     //++++++++
     case isMuted
     case isRecording
@@ -81,6 +79,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
     case recMeterLevelDb
     case playElapsedMs
     case playDurationMs
+    case audioFilePath
     //-------- 
   }
 
@@ -140,7 +139,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   func createRecStopResult(recStopCode:RecStopCode) -> [String: Any] {
     return [
       Key.recStopCode.rawValue: recStopCode.rawValue,
-      Key.audioFileNameOrPath.rawValue: _audioFilePathOrURL?.absoluteString ?? ""
+      Key.audioFilePath.rawValue: _audioFilePathOrURL?.absoluteString ?? ""
     ] as [String : Any]
   }
 
@@ -445,7 +444,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
         //Begin set of granted recording options that will actually be used
         var grantedOptions = [
           //Cross-platform
-          Key.audioFileNameOrPath.rawValue: _audioFilePathOrURL!.absoluteString,
+          Key.audioFilePath.rawValue: _audioFilePathOrURL!.absoluteString,
           Key.recMeteringEnabled.rawValue: _recMeteringEnabled,
           Key.maxRecDurationSec.rawValue: _maxRecDurationSec,
           Key.sampleRate.rawValue: _audioRecorder.settings[AVSampleRateKey]!,
