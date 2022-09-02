@@ -193,12 +193,12 @@ export enum PlayStopCode {
 }
 
 export type RecStopMetadata = {
-  audioFilePath?: string,  // Available if recStopCode !== "Error"
+  filePath?: string,  // Available if recStopCode !== "Error"
   recStopCode: RecStopCode,
 }
 
 export type PlayStopMetadata = {
-  audioFilePath?: string,  // Available ****TRUE?****** if recStopCode !== "Error"
+  filePathOrUrl?: string,  // Available ****TRUE?****** if recStopCode !== "Error"
   playStopCode: PlayStopCode,
 }
 
