@@ -131,44 +131,13 @@ export default function App(): ReactElement {
     playWidth = 0
   }
 
-  const ifAndroidEnsurePermissionsSecured = useCallback(async ():Promise<boolean> => {
-    const funcName = 'app.ifAndroidEnsurePermissionsSecured()'
-    ilog(funcName)
-    if (Platform.OS === 'android') {
-      try {
-        const grants = await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
-          PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE!,
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO!,
-        ])
-        if (
-          grants['android.permission.WRITE_EXTERNAL_STORAGE'] ===
-            PermissionsAndroid.RESULTS.GRANTED &&
-          grants['android.permission.READ_EXTERNAL_STORAGE'] ===
-            PermissionsAndroid.RESULTS.GRANTED &&
-          grants['android.permission.RECORD_AUDIO'] ===
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-          return true
-        } 
-        else {
-          wlog(funcName + ' - Required android permissions NOT granted')
-          return false
-        }
-      } catch (err) {
-        wlog(err)
-        return false
-      }
-    }
-    return true
-  }, [])
-
   // RECORDING
   
   const onStartRecord = useCallback(async ():Promise<undefined> => {
     const funcName = 'app.onStartRecord()'
     ilog(funcName)
-    if (await ifAndroidEnsurePermissionsSecured() !== true) {
+
+    if (await audio.androidPermissionsEnabled() !== true) {
       const errStr = funcName + ' - Android permissions not secured'
       elog(errStr)
       return Promise.reject(errStr)

@@ -4,6 +4,7 @@ import {
   NativeEventEmitter,
   NativeModules,
   Platform,
+  PermissionsAndroid
 } from 'react-native'
 
 import to from 'await-to-js'
@@ -272,6 +273,102 @@ export class Audio {
     this._playStopSubscription = null
   }
 
+  androidPermissionsEnabled = async ():Promise<boolean> => {
+    const funcName = 'index.androidPermissionsEnabled()'
+    ilog(funcName)
+    if (Platform.OS === 'android') {
+      try {
+        const grants = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
+          PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE!,
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO!,
+        ])
+        if (
+          grants['android.permission.WRITE_EXTERNAL_STORAGE'] ===
+            PermissionsAndroid.RESULTS.GRANTED &&
+          grants['android.permission.READ_EXTERNAL_STORAGE'] ===
+            PermissionsAndroid.RESULTS.GRANTED &&
+          grants['android.permission.RECORD_AUDIO'] ===
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+          return true
+        } 
+        else {
+          wlog(funcName + ' - Required android permissions NOT granted')
+          return false
+        }
+      } catch (err) {
+        wlog(err)
+        return false
+      }
+    }
+    return true
+  }
+
+  androidRecordAudioEnabled = async ():Promise<boolean> => {
+    const funcName = 'index.androidRecordAudioEnabled()'
+    ilog(funcName)
+    if (Platform.OS === 'android') {
+      try {
+        if (await PermissionsAndroid.request(
+                PermissionsAndroid.PERMISSIONS.RECORD_AUDIO!)) {
+          return true
+        } 
+        else {
+          elog(funcName + ' - Android RECORD_AUDIO permission NOT granted')
+          return false
+        }
+      } catch (err) {
+        wlog(err)
+        return false
+      }
+    }
+    return true
+  }
+
+  androidWriteExternalStorageEnabled = async ():Promise<boolean> => {
+    const funcName = 'index.androidWriteExternalStorageEnabled()'
+    ilog(funcName)
+    if (Platform.OS === 'android') {
+      try {
+        if (await PermissionsAndroid.request(
+                PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!)) {
+          return true
+        } 
+        else {
+          wlog(funcName + ' - Android WRITE_EXTERNAL_STORAGE permissions NOT granted')
+          return false
+        }
+      } catch (err) {
+        wlog(err)
+        return false
+      }
+    }
+    return true
+  }
+
+  androidReadExternalStorageEnabled = async ():Promise<boolean> => {
+    const funcName = 'index.androidReadExternalStorageEnabled()'
+    ilog(funcName)
+    if (Platform.OS === 'android') {
+      try {
+        if (await PermissionsAndroid.request(
+              PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE!)) {
+          return true
+        } 
+        else {
+          wlog(funcName + ' - Android READ_EXTERNAL_STORAGE permissions NOT granted')
+          return false
+        }
+      } catch (err) {
+        wlog(err)
+        return false
+      }
+    }
+    return true
+  }
+
+
   resolveAndValidateRecordingOptions = async (recordingOptions:RecordingOptions): Promise<boolean> => {
 
     // This function is FAR from complete. 
@@ -290,8 +387,9 @@ export class Audio {
     let res = true;  // Default to valid
     let errMsgs:String[] = [] 
 
-    //Allow fully-default set of options
-    if (recordingOptions === {}) {
+    //Allow empty set of options (to get default set of options)
+    if (recordingOptions === undefined || 
+        Object.keys(recordingOptions).length === 0) {
       return res;
     }
 
