@@ -273,7 +273,13 @@ export class Audio {
     this._playStopSubscription = null
   }
 
-  androidPermissionsEnabled = async ():Promise<boolean> => {
+  /**
+   * Verify required Android permissions are enabled; requesting that
+   * they be enabled, if necessary. Returns true if all required 
+   * permissions are enabled, false otherwise.
+   * @returns Promise<boolean>
+   */
+  verifyAndroidPermissionsEnabled = async ():Promise<boolean> => {
     const funcName = 'index.androidPermissionsEnabled()'
     ilog(funcName)
     if (Platform.OS === 'android') {
@@ -305,7 +311,13 @@ export class Audio {
     return true
   }
 
-  androidRecordAudioEnabled = async ():Promise<boolean> => {
+  /**
+   * Verify that Android's RECORD_AUDIO permission is enabled; 
+   * requesting that it be enabled, if necessary. 
+   * Returns true if enabled, false otherwise.
+   * @returns Promise<boolean>
+   */
+  verifyAndroidRecordAudioEnabled = async ():Promise<boolean> => {
     const funcName = 'index.androidRecordAudioEnabled()'
     ilog(funcName)
     if (Platform.OS === 'android') {
@@ -326,7 +338,13 @@ export class Audio {
     return true
   }
 
-  androidWriteExternalStorageEnabled = async ():Promise<boolean> => {
+  /**
+   * Verify that Android's WRITE_EXTERNAL_STORAGE permission is enabled; 
+   * requesting that it be enabled, if necessary. 
+   * Returns true if enabled, false otherwise.
+   * @returns Promise<boolean>
+   */
+  verifyAndroidWriteExternalStorageEnabled = async ():Promise<boolean> => {
     const funcName = 'index.androidWriteExternalStorageEnabled()'
     ilog(funcName)
     if (Platform.OS === 'android') {
@@ -347,7 +365,13 @@ export class Audio {
     return true
   }
 
-  androidReadExternalStorageEnabled = async ():Promise<boolean> => {
+  /**
+   * Verify that Android's READ_EXTERNAL_STORAGE permission is enabled; 
+   * requesting that it be enabled, if necessary. 
+   * Returns true if enabled, false otherwise.
+   * @returns Promise<boolean>
+   */
+  verifyAndroidReadExternalStorageEnabled = async ():Promise<boolean> => {
     const funcName = 'index.androidReadExternalStorageEnabled()'
     ilog(funcName)
     if (Platform.OS === 'android') {
