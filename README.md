@@ -115,6 +115,15 @@ audio.seekToPlayer(time)
 ...
 
 
+// Run-time permission checking (Android only)
+// All required permissions at once:
+audio.androidPermissionsEnabled()
+// Granularly:
+audio.androidRecordAudioEnabled()
+audio.androidWriteExternalStorageEnabled()
+audio.androidReadExternalStorageEnabled()
+
+
 // Time formatting
 
 audio.mmss(secs)  // Returns MM:SS formatted time string
