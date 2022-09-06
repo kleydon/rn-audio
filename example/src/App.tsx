@@ -137,7 +137,7 @@ export default function App(): ReactElement {
     const funcName = 'app.onStartRecord()'
     ilog(funcName)
 
-    if (await audio.androidPermissionsEnabled() !== true) {
+    if (await audio.verifyAndroidPermissionsEnabled() !== true) {
       const errStr = funcName + ' - Android permissions not secured'
       elog(errStr)
       return Promise.reject(errStr)
