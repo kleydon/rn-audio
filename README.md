@@ -184,43 +184,19 @@ Depending on your app, you may wish to stop/cancel recording/playback in the eve
 
 #### Requesting Permission - Android
 
-Android above API/SDK 23 (Marshmellow) requires run-time permission to record audio; this can be addressed through use of [react-native-permissions](https://www.npmjs.com/package/react-native-permissions). Example:
+Android above API/SDK 23 (Marshmellow) requires run-time permission to record audio; this can be addressed with this library (interally using [react-native-permissions](https://www.npmjs.com/package/react-native-permissions)), via:
 
 ```ts
-if (Platform.OS === 'android') {
-  try {
-    const requestedPermissions = [
-      PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-    ]
-    const grantedPermissions = 
-      await PermissionsAndroid.requestMultiple(requestedPermissions)
-    console.log('grantedPermission: ', grantedPermissions)
-    if (
-      grants['android.permission.WRITE_EXTERNAL_STORAGE'] ===
-        PermissionsAndroid.RESULTS.GRANTED &&
-      grants['android.permission.READ_EXTERNAL_STORAGE'] ===
-        PermissionsAndroid.RESULTS.GRANTED &&
-      grants['android.permission.RECORD_AUDIO'] ===
-        PermissionsAndroid.RESULTS.GRANTED
-    ) {
-      console.log('All requested permissions granted')
-    } 
-    else {
-      console.log('One or more required permissions not granted')
-      return
-    }
-  } 
-  catch (err) {
-    console.warn(err)
-    return
-  }
-}
+// All required permissions at once:
+audio.androidPermissionsEnabled()
+// Granularly:
+audio.androidRecordAudioEnabled()
+audio.androidWriteExternalStorageEnabled()
+audio.androidReadExternalStorageEnabled()
 ```
 
 #### Requesting Permission - iOS
-While iOS _automatically_ requests a user's permission as audio is used (based on corresponding plist entries - see "Post-Intallation" above), it is still worth considering when it is best for a user to _experience_ permission requests, and perhaps artificially use audio so as to surface permission requests at opportune times for the user.
+While iOS _automatically_ requests a user's permission when audio is used (based on Info.plist entries; see "Post-Intallation" above), it is still worth considering when it is best for a user to _experience_ permission requests, and perhaps artificially use audio so as to surface permission requests at opportune times for the user.
 
 
 ## Contributing
@@ -268,6 +244,7 @@ From the `rn-audio` project directory, run `yarn example ios` and `yarn example 
   2. `cd` into library's main project folder
   3. Ensure a bridging header file exists within iOS project; tailor if needed. See [here](https://javedmultani16.medium.com/adding-a-swift-bridging-header-b6b0a7ab895f) and [here](https://stackoverflow.com/questions/31716413/xcode-not-automatically-creating-bridging-header).
   4. Create / update .gitignore, to ignore `node_modules`, etc.
+  5. Ensure the bundle identifier is `com.quixotry.rnaudio`
   5. Add any 'native' project dependencies (and _their_ dependencies), with `yarn add <npm module or github repo>`
   6. Install all project dependencies using `yarn` and `npx pod-install`. 
      You may need to delete a `yarn.lock` file first

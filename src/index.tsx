@@ -184,7 +184,7 @@ export enum EventId {
 export enum RecStopCode {
   Requested = "Requested",  // By user or app; not due to error or timeout
   MaxDurationReached = "MaxDurationReached",
-  WasNotRecording = "WasNotRecording",
+  WasNotRecording = "WasNotRecording",  // Response to request to stopRecording, when not recording
   Error = "Error",
 }
 
@@ -224,13 +224,13 @@ interface StartPlayerArgs {
   playStopCallback?: ((playStopMetadata: PlayStopMetadata) => void) | null
   playVolume?: number 
 }
-export type StartPlayerResult = {
+export type StartPlayResult = {
   filePathOrURL: string, 
 }
-export type StopPlayerResult = PlayStopMetadata
+export type StopPlayResult = PlayStopMetadata
 
 
-interface StartRecorderArgs {
+interface StartRecArgs {
   recordingOptions: RecordingOptions,
   recUpdateCallback?: ((recUpdateMetadata: RecUpdateMetadata) => void) | null
   recStopCallback?: ((recStopMetadata: RecStopMetadata) => void) | null
@@ -238,7 +238,7 @@ interface StartRecorderArgs {
 export interface StartRecorderResult extends Omit<RecordingOptions, 'fileNameOrPath'> {
   filePath: string
 }
-export type StopRecorderResult = RecStopMetadata
+export type StopRecResult = RecStopMetadata
 
 
 const ilog = console.log
