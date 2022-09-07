@@ -21,7 +21,6 @@ import {
 import {
   AppState,
   Dimensions,
-  PermissionsAndroid,
   Platform,
   SafeAreaView,
   Text,
