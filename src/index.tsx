@@ -224,13 +224,13 @@ interface StartPlayerArgs {
   playStopCallback?: ((playStopMetadata: PlayStopMetadata) => void) | null
   playVolume?: number 
 }
-export type StartPlayResult = {
+export type StartPlayerResult = {
   filePathOrURL: string, 
 }
-export type StopPlayResult = PlayStopMetadata
+export type StopPlayerResult = PlayStopMetadata
 
 
-interface StartRecArgs {
+interface StartRecorderArgs {
   recordingOptions: RecordingOptions,
   recUpdateCallback?: ((recUpdateMetadata: RecUpdateMetadata) => void) | null
   recStopCallback?: ((recStopMetadata: RecStopMetadata) => void) | null
@@ -238,7 +238,7 @@ interface StartRecArgs {
 export interface StartRecorderResult extends Omit<RecordingOptions, 'fileNameOrPath'> {
   filePath: string
 }
-export type StopRecResult = RecStopMetadata
+export type StopRecorderResult = RecStopMetadata
 
 
 const ilog = console.log
