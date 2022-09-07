@@ -184,12 +184,14 @@ export enum EventId {
 export enum RecStopCode {
   Requested = "Requested",  // By user or app; not due to error or timeout
   MaxDurationReached = "MaxDurationReached",
+  WasNotRecording = "WasNotRecording",
   Error = "Error",
 }
 
 export enum PlayStopCode {
   Requested = "Requested",  // By user or app; not due to error or timeout
   MaxDurationReached = "MaxDurationReached",
+  WasNotPlaying = "WasNotPlaying",
   Error = "Error",
 }
 
