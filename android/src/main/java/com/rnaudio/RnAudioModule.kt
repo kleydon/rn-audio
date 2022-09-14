@@ -492,7 +492,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       // Hopefully the metadata will be in the saved files anyway.
       val grantedOptions = Arguments.createMap()
       //Cross-platform
-      grantedOptions.putString(Key.filePath.str, "file:///$_filePathOrUrl")
+      //grantedOptions.putString(Key.filePath.str, "file:///$_filePathOrUrl")
+      grantedOptions.putString(Key.filePath.str, _filePathOrUrl)
       grantedOptions.putBoolean(Key.recMeteringEnabled.str, _recMeteringEnabled)
       grantedOptions.putDouble(Key.maxRecDurationSec.str, maxRecDurationSec)
       grantedOptions.putDouble(Key.sampleRate.str, _sampleRate.toDouble())
@@ -937,8 +938,10 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       }
       
       _mediaPlayer!!.setOnPreparedListener({ mp ->
-        Log.d(TAG, "mediaplayer prepared and start")
-        mp.start()
+
+        //Start
+        mp?.start()
+  
         //Set timer task to send event to RN.
         _playUpdateTimerTask = object : TimerTask() {
           override fun run() {
@@ -955,6 +958,16 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
         }
         _playUpdateTimer = Timer()
         _playUpdateTimer!!.schedule(_playUpdateTimerTask, 0, _subscriptionDurationMs.toLong())
+
+        //Add route change listener after starting
+        // *** STILL FIRES, HERE. EITHER NEED TO GET IT TO STOP FIRING, OR ELSE
+        //     VERIFY THAT THE ROUTE CHANGED TO IS ACCEPTABLE. LEAVING THIS FOR
+        //     LATER ***
+        // if (_routingChangedListener != null) {
+        //   Log.d(TAG, funcName + " Adding routing changed listener... ")
+        //   _mediaPlayer!!.addOnRoutingChangedListener(_routingChangedListener, null) 
+        // }
+
       })
 
       _mediaPlayer!!.setOnErrorListener { _, what, extra ->
@@ -977,20 +990,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
         resetMediaPlayer()
         //Send event 
         sendPlayStopEvent(PlayStopCode.MaxDurationReached)
-      }
-
-      _mediaPlayer!!.setOnPreparedListener { _ ->
-        
-        _mediaPlayer!!.start()
-
-        //Add route change listener after starting
-        // *** STILL FIRES, HERE. EITHER NEED TO GET IT TO STOP FIRING, OR ELSE
-        //     VERIFY THAT THE ROUTE CHANGED TO IS ACCEPTABLE. LEAVING THIS FOR
-        //     LATER ***
-        // if (_routingChangedListener != null) {
-        //   Log.d(TAG, funcName + " Adding routing changed listener... ")
-        //   _mediaPlayer!!.addOnRoutingChangedListener(_routingChangedListener, null) 
-        // }
       }
 
       _mediaPlayer!!.prepareAsync()
@@ -1169,7 +1168,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     val obj = Arguments.createMap()
     obj.putString(Key.recStopCode.str, recStopCode.str)
     if (filePath !== null) {
-      obj.putString(Key.filePath.str, "file:///$filePath")
+      //obj.putString(Key.filePath.str, "file:///$filePath")
+      obj.putString(Key.filePath.str, filePath)
     }
     return obj
   }
@@ -1195,7 +1195,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     obj.putString(Key.playStopCode.str, playStopCode.str)
     if (filePathOrUrl !== null) {
       var revisedFilePathOrUrl = 
-          if (isUrl(filePathOrUrl)) "$filePathOrUrl" else "file:///$filePathOrUrl" 
+          //if (isUrl(filePathOrUrl)) "$filePathOrUrl" else "file:///$filePathOrUrl"
+          filePathOrUrl
       obj.putString(Key.filePathOrUrl.str, revisedFilePathOrUrl)
     }
     return obj
@@ -1206,6 +1207,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
 
   private fun sendPlayUpdateEvent(elapsedMs:Int, durationMs:Int) {
+    Log.d(TAG, "sending play update event...")
     val obj = Arguments.createMap()
     obj.putDouble(Key.playElapsedMs.str, elapsedMs.toDouble())
     obj.putDouble(Key.playDurationMs.str, durationMs.toDouble())
@@ -1389,7 +1391,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     //Granted parameters: 
     //Cross-platform 
-    grantedOptions.putString(Key.filePath.str, "file:///$_filePathOrUrl")
+    //grantedOptions.putString(Key.filePath.str, "file:///$_filePathOrUrl")
+    grantedOptions.putString(Key.filePath.str, _filePathOrUrl)
     grantedOptions.putBoolean(Key.recMeteringEnabled.str, _recMeteringEnabled)
     grantedOptions.putDouble(Key.maxRecDurationSec.str, maxRecDurationSec)
     grantedOptions.putDouble(Key.sampleRate.str, _sampleRate.toDouble())
