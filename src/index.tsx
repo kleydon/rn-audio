@@ -895,7 +895,9 @@ export class Audio {
     }
 
     await this.resetPlayer()
+
     if (playUpdateCallback) {
+      ilog('SETTING PLAY UPDATE CALLBACK...')
       this._playUpdateCallback = playUpdateCallback
       this.addPlayUpdateCallback(playUpdateCallback)
     }
