@@ -492,7 +492,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       // Hopefully the metadata will be in the saved files anyway.
       val grantedOptions = Arguments.createMap()
       //Cross-platform
-      //grantedOptions.putString(Key.filePath.str, "file:///$_filePathOrUrl")
       grantedOptions.putString(Key.filePath.str, _filePathOrUrl)
       grantedOptions.putBoolean(Key.recMeteringEnabled.str, _recMeteringEnabled)
       grantedOptions.putDouble(Key.maxRecDurationSec.str, maxRecDurationSec)
@@ -1168,7 +1167,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     val obj = Arguments.createMap()
     obj.putString(Key.recStopCode.str, recStopCode.str)
     if (filePath !== null) {
-      //obj.putString(Key.filePath.str, "file:///$filePath")
       obj.putString(Key.filePath.str, filePath)
     }
     return obj
@@ -1194,10 +1192,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     val obj = Arguments.createMap()
     obj.putString(Key.playStopCode.str, playStopCode.str)
     if (filePathOrUrl !== null) {
-      var revisedFilePathOrUrl = 
-          //if (isUrl(filePathOrUrl)) "$filePathOrUrl" else "file:///$filePathOrUrl"
-          filePathOrUrl
-      obj.putString(Key.filePathOrUrl.str, revisedFilePathOrUrl)
+      obj.putString(Key.filePathOrUrl.str, filePathOrUrl)
     }
     return obj
   }
@@ -1391,7 +1386,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     //Granted parameters: 
     //Cross-platform 
-    //grantedOptions.putString(Key.filePath.str, "file:///$_filePathOrUrl")
     grantedOptions.putString(Key.filePath.str, _filePathOrUrl)
     grantedOptions.putBoolean(Key.recMeteringEnabled.str, _recMeteringEnabled)
     grantedOptions.putDouble(Key.maxRecDurationSec.str, maxRecDurationSec)
