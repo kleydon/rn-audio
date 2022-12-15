@@ -699,7 +699,7 @@ export class Audio {
    * @returns {Promise<PlayerState>}
    */
   getPlayerState = async (): Promise<PlayerState> => {
-    const funcName = 'index.getPlayerState(): ' + RnAudio.getPlayerState()
+    const funcName = 'index.getPlayerState(): ' + RnAudio.getPlayerState()  // Casting to string doesn't work... Is there a better way?
     ilog(funcName)
     return await RnAudio.getPlayerState()
   }
@@ -897,7 +897,6 @@ export class Audio {
     await this.resetPlayer()
 
     if (playUpdateCallback) {
-      ilog('SETTING PLAY UPDATE CALLBACK...')
       this._playUpdateCallback = playUpdateCallback
       this.addPlayUpdateCallback(playUpdateCallback)
     }
@@ -950,7 +949,7 @@ export class Audio {
     const funcName = 'index.resumePlayer()'
     ilog(funcName)
     const playerState = await this.getPlayerState()
-    ilog(funcName + ' - playerState:', playerState)
+    ilog(funcName + ' - playerState: ', playerState)
     if (playerState !== PlayerState.Paused) {
       return funcName + ' - No need to resume; player isn\'t ' + 
           ((playerState === PlayerState.Stopped) ? 'playing' : 'paused')

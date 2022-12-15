@@ -1132,28 +1132,31 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   private fun isUrl(fileNameOrPathOrUrl: String?):Boolean {
     val v = fileNameOrPathOrUrl
     return (v != null &&
-        (v.startsWith("http://") || 
-         v.startsWith("https://")))
+        ( v.startsWith("http://") || 
+          v.startsWith("https://") ))
+  }
+
+  private fun isPath(fileNameOrPathOrUrl: String?):Boolean {
+    val v = fileNameOrPathOrUrl
+    return (v != null && 
+            ( v.startsWith("/") || 
+              v.startsWith("./") || 
+              v.startsWith("../") ))
   }
 
   private fun resolveFilePathOrUrl(rawFileNameOrPathOrUrl: String?, isWav:Boolean):String {
     val funcName = TAG + ".resolveFilePathOrUrl()"
     Log.d(TAG, funcName)
-    val v = rawFileNameOrPathOrUrl
-    if (v != null &&
-        (v.startsWith("http://") || 
-         v.startsWith("https://") || 
-         v.startsWith("file://") ||
-         v.startsWith("/") ||
-         v.startsWith("./") ||
-         v.startsWith("../"))) {
+    val v = if (rawFileNameOrPathOrUrl == null) { null } else { rawFileNameOrPathOrUrl.replace("file://", "") }
+    if ((v != null) && ( isUrl(v) || isPath(v) )) {
       return v
     }
     else if (v != null && v != "" && v != DEFAULT_FILE_NAME_PLACEHOLDER) {
       return "${reactContext.cacheDir}/$v"
     }
-    // Could do more to provide the right filename based on knowing
-    // the encoding...
+    // v == null.
+    // Potentially could do more below, to provide the right filename
+    // based on knowing the encoding...
     else if (isWav) {
       return "${reactContext.cacheDir}/$DEFAULT_WAV_FILE_NAME"
     }
