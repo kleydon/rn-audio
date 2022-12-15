@@ -35,6 +35,7 @@ import React, {
   useRef,
 } from 'react'
 import to from 'await-to-js'
+import RNFS from 'react-native-fs'
 //import ReactNativeBlobUtil from 'react-native-blob-util'  // For directory structure, file transfer, etc.
 import { Button } from './components/Button'
 import { ss } from './styles/styleSheet'
@@ -43,17 +44,24 @@ const ilog = console.log
 const wlog = console.warn
 const elog = console.error
 
+const dirPath = RNFS.CachesDirectoryPath + '/'
+
+const wavName = 'recording.wav'
+const wavPath = dirPath + wavName
+
+const mp4Name = 'recording.mp4'
+const mp4Path = dirPath + mp4Name
 
 const recordingOptions:RecordingOptions = {
-  
+
   //audioFileNameOrPath: 'https://download.samplelib.com/wav/sample-3s.wav'
 
   //Shared
   fileNameOrPath: Platform.select({
-    //ios: 'recording.m4a',
-    ios: 'recording.wav',
-    //android: 'recording.mp4',
-    android: 'recording.wav',
+    //ios: mp4Name,
+    ios: wavPath,
+    //android: mp4Name,
+    android: wavPath,
   }),
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,

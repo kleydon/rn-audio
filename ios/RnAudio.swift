@@ -151,8 +151,8 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   func sendRecStopEvent(recStopCode:RecStopCode) {
     sendEvent(withName: EventId.RecStop.rawValue, 
-                  body: createRecStopResult(recStopCode: recStopCode, 
-                                            filePath: _filePathOrUrl?.absoluteString ?? ""))
+              body: createRecStopResult(recStopCode: recStopCode, 
+                                        filePath: _filePathOrUrl?.absoluteString ?? ""))
   }
 
   func sendRecUpdateEvent(elapsedMs:Double, isRecording:Bool, meterLevelDb:Float) {
@@ -200,13 +200,17 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
   }
 
  
-    
-  func isUrlString(maybeUrlString:String) -> Bool {
-    return (maybeUrlString.hasPrefix("http://") ||
-            maybeUrlString.hasPrefix("https://"))
+  func isUrlString(s:String) -> Bool {
+    return (s.hasPrefix("http://") ||
+            s.hasPrefix("https://"))
+  }
+
+  func isPathString(s:String) -> Bool {
+    return (s.hasPrefix("/") ||
+            s.hasPrefix("../") ||
+            s.hasPrefix("./"))
   }
     
-
   func assertFileExists(filePath:String) throws -> Void {
     let funcName = "assertFileExists()"
     print(funcName)
@@ -214,19 +218,16 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
       throw RnAudioError.error("File to play doesn't exist.")
     }
   }
-    
+  
 
   func resolveFilePathOrUrl(rawFileNameOrPathOrUrl: String?) -> URL {
     let funcName = TAG + ".resolveFilePathOrUrl()"
     print(funcName)
     let v = rawFileNameOrPathOrUrl
-    if (v != nil && 
-        (v!.hasPrefix("http://") || 
-         v!.hasPrefix("https://") || 
-         v!.hasPrefix("file://") ||
-         v!.hasPrefix("/") ||
-         v!.hasPrefix("./") ||
-         v!.hasPrefix("../"))) {
+    if (v != nil && isUrlString(s:v!) || isPathString(s:v!) || v!.hasPrefix("file://")) {
+      if (isPathString(s:v!)) {
+        return URL(string: "file://" + v!)!
+      }
       return URL(string: v!)!
     }
     else if (v != nil && v != "" && v != DEFAULT_FILE_NAME_PLACEHOLDER) {
