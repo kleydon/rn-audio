@@ -49,7 +49,8 @@ RCT_EXTERN_METHOD(setPlayerVolume:(double)volume
                   resolver:(RCTPromiseResolveBlock) resolve
                   rejecter:(RCTPromiseRejectBlock) reject);
 
-RCT_EXTERN_METHOD(setSubscriptionDuration:(double)durationSec);
+RCT_EXTERN_METHOD(setSubscriptionDuration:(double)durationSec
+                  resolver:(RCTPromiseResolveBlock) resolve);
 
 
 @end

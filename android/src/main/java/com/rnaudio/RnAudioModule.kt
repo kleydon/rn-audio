@@ -1123,7 +1123,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     val funcName = TAG + ".setSubscriptionDuration()"
     Log.d(TAG, funcName)
     _subscriptionDurationMs = (sec * 1000).toInt()
-    return promise.resolve(funcName + " - Set subscription duration: $_subscriptionDurationMs")
+    return promise.resolve(funcName + " - Set subscription duration: $sec sec")
   }
 
 

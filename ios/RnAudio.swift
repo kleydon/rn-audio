@@ -191,12 +191,16 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
                   body: playStopResult )
   }
 
-    
-  @objc(setSubscriptionDuration:)
-  func setSubscriptionDuration(durationSec: Double) -> Void {
+
+  @objc(setSubscriptionDuration:resolver)
+  func setSubscriptionDuration(
+    durationSec: Double,
+    resolver resolve: @escaping RCTPromiseResolveBlock
+  ) -> Void {
     let funcName = TAG + ".setSubscriptionDuration()"
     print(funcName)
     _subscriptionDurationSec = durationSec
+    return resolve(funcName + " - Set subscription duration: " + durationSec + " sec")
   }
 
  
