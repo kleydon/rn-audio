@@ -254,10 +254,12 @@ From the `rn-audio` project directory, run `yarn example ios` and `yarn example 
       * In the module class declaration line, be sure to use **`private val`** reactContext`, so 
         `reactContext` is available to class member functions
   8. `cd` into library's `example` project folder, reprise steps 3 - 7 as needed.
-  9. `cd` back to the libraries main project folder
-  9. Run example app on iOS:
+  9. To address a wierd `error: implicit declaration of function 'assert' is invalid in C99 [-Werror,-Wimplicit-function-declaration]` bug (noticed when compiling for iOS on an intel Mac with macOS 13.1/Ventura),
+  you *may* need to change the example folder's XCode Pods project build setting for `C Language Dialect` for the SocketRocket and Flipper-PeerTalk targets from `gnu11` to `gnu99`; see: https://github.com/facebook/react-native/issues/35725. If you discover you *DONT* need to do this - update this documentation!
+  10. `cd` back to the libraries main project folder
+  11. Run example app on iOS:
     `yarn example ios`
-  10. Run the example app on Android:
+  12. Run the example app on Android:
     `yarn example android`
 
 
