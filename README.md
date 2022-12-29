@@ -56,7 +56,6 @@ import {
 
 const recordingOptions:RecordingOptions = {
   audioFileNameOrPath: 'recording.wav',
-  }),
   recMeteringEnabled: true,
   maxRecDurationSec: 10.0,
   ...
