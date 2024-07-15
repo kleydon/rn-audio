@@ -286,20 +286,24 @@ export class Audio {
     ilog(funcName)
     if (Platform.OS === 'android') {
       try {
-        wlog(funcName + ' - Android platform.version:', Platform.Version)
         const grants = await PermissionsAndroid.requestMultiple([
           PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
           PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE!,
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO!,
         ])
-        wlog(funcName + ' - Android permission grants:', grants)
+        ilog(funcName + ' - Android platform.version:', Platform.Version)
+        ilog(funcName + ' - Android permission grants:', grants)
+        // Post Android 13 (API 33), WRITE/READ_EXTERNAL_STORAGE change to scoped storage
+        // See: https://stackoverflow.com/questions/72948052/android-13-read-external-storage-permission-still-usable/73630987#73630987
         if (
-          grants['android.permission.WRITE_EXTERNAL_STORAGE'] ===
-            PermissionsAndroid.RESULTS.GRANTED &&
-          grants['android.permission.READ_EXTERNAL_STORAGE'] ===
-            PermissionsAndroid.RESULTS.GRANTED &&
-          grants['android.permission.RECORD_AUDIO'] ===
-            PermissionsAndroid.RESULTS.GRANTED
+          grants['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED &&
+          (
+            Platform.Version >= 33 || 
+            (
+              grants['android.permission.WRITE_EXTERNAL_STORAGE'] === PermissionsAndroid.RESULTS.GRANTED &&
+              grants['android.permission.READ_EXTERNAL_STORAGE'] === PermissionsAndroid.RESULTS.GRANTED
+            )
+          )
         ) {
           return true
         } 
