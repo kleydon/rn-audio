@@ -291,6 +291,7 @@ export class Audio {
           PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE!,
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO!,
         ])
+        ilog('Android permission grants:', grants)
         if (
           grants['android.permission.WRITE_EXTERNAL_STORAGE'] ===
             PermissionsAndroid.RESULTS.GRANTED &&
