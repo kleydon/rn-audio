@@ -286,12 +286,13 @@ export class Audio {
     ilog(funcName)
     if (Platform.OS === 'android') {
       try {
+        wlog(funcName + ' - Android platform.version:', Platform.Version)
         const grants = await PermissionsAndroid.requestMultiple([
           PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
           PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE!,
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO!,
         ])
-        ilog('Android permission grants:', grants)
+        wlog(funcName + ' - Android permission grants:', grants)
         if (
           grants['android.permission.WRITE_EXTERNAL_STORAGE'] ===
             PermissionsAndroid.RESULTS.GRANTED &&
