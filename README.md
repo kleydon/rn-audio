@@ -116,11 +116,11 @@ audio.seekToPlayer(time)
 
 // Run-time permission checking (Android only)
 // All required permissions at once:
-audio.androidPermissionsEnabled()
+audio.verifyAndroidPermissionsEnabled()
 // Granularly:
-audio.androidRecordAudioEnabled()
-audio.androidWriteExternalStorageEnabled()
-audio.androidReadExternalStorageEnabled()
+audio.verifyAndroidRecordAudioEnabled()
+audio.verifyAndroidWriteExternalStorageEnabled()
+audio.verifyAndroidReadExternalStorageEnabled()
 
 
 // Time formatting
