@@ -226,7 +226,18 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   private fun ensurePermissionsSecured():Boolean {
     Log.d(TAG, "RnAudio.ensurePermissionsSecured()")
     try {
-      if (Build.VERSION.SDK_INT >= 23 &&
+      // 33 and above handle WRITE_EXTERNAL_STORAGE differently
+      if (Build.VERSION.SDK_INT >= 33 && 
+          ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != 
+            PackageManager.PERMISSION_GRANTED) {
+
+        ActivityCompat.requestPermissions((currentActivity)!!, arrayOf(Manifest.permission.RECORD_AUDIO), 0)
+        
+        //Returning false is not ideal, but its simple; probably the least-worst solution.
+        //If there are alternatives, they are MESSY.
+        return false
+      }
+      else if (Build.VERSION.SDK_INT >= 23 &&
           (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
            ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
           
