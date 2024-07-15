@@ -293,7 +293,9 @@ export class Audio {
         ])
         ilog(funcName + ' - Android platform.version:', Platform.Version)
         ilog(funcName + ' - Android permission grants:', grants)
-        // Post Android 13 (API 33), WRITE/READ_EXTERNAL_STORAGE change to scoped storage
+        // TODO: Android 13 (API 33) storage permissions should be handled differently / more completely...
+        // https://developer.android.com/reference/android/Manifest.permission#READ_EXTERNAL_STORAGE
+        // https://developer.android.com/reference/android/Manifest.permission#WRITE_EXTERNAL_STORAGE
         // See: https://stackoverflow.com/questions/72948052/android-13-read-external-storage-permission-still-usable/73630987#73630987
         if (
           grants['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED &&
@@ -357,7 +359,8 @@ export class Audio {
     ilog(funcName)
     if (Platform.OS === 'android') {
       try {
-        if (await PermissionsAndroid.request(
+        // TODO: Android 13 (API 33) storage permissions should be handled differently / more completely...
+        if (Platform.Version >= 33 || await PermissionsAndroid.request(
                 PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!)) {
           return true
         } 
@@ -384,7 +387,8 @@ export class Audio {
     ilog(funcName)
     if (Platform.OS === 'android') {
       try {
-        if (await PermissionsAndroid.request(
+        // TODO: Android 13 (API 33) storage permissions should be handled differently / more completely...
+        if (Platform.Version >= 33 || await PermissionsAndroid.request(
               PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE!)) {
           return true
         } 
