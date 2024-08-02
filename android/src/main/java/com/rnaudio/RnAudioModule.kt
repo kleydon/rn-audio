@@ -228,7 +228,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     var buid_gte_33:String? = (Build.VERSION.SDK_INT >= 33).toString()
     var check_res:String? = (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED).toString()
     var x:String? = "XXXX" + buid_gte_33 + " " + check_res
-    Log.d(TAG, x)
+    Log.d(TAG, x!)
 
     try {
       // 33 and above handle WRITE_EXTERNAL_STORAGE differently
