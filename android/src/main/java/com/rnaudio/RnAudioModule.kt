@@ -225,47 +225,40 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   //https://stackoverflow.com/questions/44960363/how-do-you-implement-permissionawareactivity-for-react-native
   private fun ensurePermissionsSecured():Boolean {
     Log.d(TAG, "RnAudio.ensurePermissionsSecured()")
-    var buid_gte_33:String = (Build.VERSION.SDK_INT >= 33)!!.toString()
-    var check_res:String = (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)!!.toString()
-    var x:String = "XXXX" + buid_gte_33 + " " + check_res
-    Log.d(TAG, x)
-
     try {
       // 33 and above handle WRITE_EXTERNAL_STORAGE differently
-      if (Build.VERSION.SDK_INT >= 33 && 
-          ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != 
-            PackageManager.PERMISSION_GRANTED) {
+      if (Build.VERSION.SDK_INT >= 33) {
+        if (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
 
-Log.d(TAG, "A")
-
-        ActivityCompat.requestPermissions((currentActivity)!!, arrayOf(Manifest.permission.RECORD_AUDIO), 0)
+          ActivityCompat.requestPermissions((currentActivity)!!, arrayOf(Manifest.permission.RECORD_AUDIO), 0)
         
-        //Returning false is not ideal, but its simple; probably the least-worst solution.
-        //If there are alternatives, they are MESSY.
-        return false
+          //Returning false is not ideal, but its simple; probably the least-worst solution.
+          //If there are alternatives, they are MESSY.
+          return false
+        }
+
+        return true
       }
-      else if (Build.VERSION.SDK_INT >= 23 &&
-          (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
-           ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
+      else if (Build.VERSION.SDK_INT >= 23) {
+        if (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
+            ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
 
-Log.d(TAG, "B")
-
-        ActivityCompat.requestPermissions((currentActivity)!!, arrayOf(
+          ActivityCompat.requestPermissions((currentActivity)!!, arrayOf(
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE), 0)
         
-        //Returning false is not ideal, but its simple; probably the least-worst solution.
-        //If there are alternatives, they are MESSY.
-        return false
-      }
-    } 
+          //Returning false is not ideal, but its simple; probably the least-worst solution.
+          //If there are alternatives, they are MESSY.
+          return false
+        }
+
+        return true
+    }
     catch (e: Exception) {
-
-Log.d(TAG, "C")
-
       Log.w(TAG, e.toString())
       return false
     }
+
     return true
   }
 
