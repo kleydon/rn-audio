@@ -226,8 +226,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   private fun ensurePermissionsSecured():Boolean {
     Log.d(TAG, "RnAudio.ensurePermissionsSecured()")
     var buid_gte_33 = (Build.VERSION.SDK_INT >= 33)
-    var check_res = ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != 
-            PackageManager.PERMISSION_GRANTED)
+    var check_res = ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
     Log.d(TAG, "XXXX", buid_gte_33.toString(), check_res.toString())
 
     try {
