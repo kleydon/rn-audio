@@ -225,10 +225,10 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   //https://stackoverflow.com/questions/44960363/how-do-you-implement-permissionawareactivity-for-react-native
   private fun ensurePermissionsSecured():Boolean {
     Log.d(TAG, "RnAudio.ensurePermissionsSecured()")
-    var buid_gte_33 = (Build.VERSION.SDK_INT >= 33).toString()
-    var check_res = (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED).toString()
-    var x = buid_gte_33 + " " + check_res
-    Log.d(TAG, "XXXX", x)
+    var buid_gte_33:String? = (Build.VERSION.SDK_INT >= 33).toString()
+    var check_res:String? = (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED).toString()
+    var x:String? = "XXXX" + buid_gte_33 + " " + check_res
+    Log.d(TAG, x)
 
     try {
       // 33 and above handle WRITE_EXTERNAL_STORAGE differently
