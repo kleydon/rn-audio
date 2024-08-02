@@ -297,13 +297,6 @@ export class Audio {
         // https://developer.android.com/reference/android/Manifest.permission#READ_EXTERNAL_STORAGE
         // https://developer.android.com/reference/android/Manifest.permission#WRITE_EXTERNAL_STORAGE
         // See: https://stackoverflow.com/questions/72948052/android-13-read-external-storage-permission-still-usable/73630987#73630987
-        ilog(funcName + ' - AAA:', grants['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED)
-        ilog(funcName + ' - BBB:', (Platform.Version >= 33))
-        ilog(funcName + ' - CCC:',  (
-            grants['android.permission.WRITE_EXTERNAL_STORAGE'] === PermissionsAndroid.RESULTS.GRANTED &&
-            grants['android.permission.READ_EXTERNAL_STORAGE'] === PermissionsAndroid.RESULTS.GRANTED
-          )
-        )
         if (
           grants['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED &&
           (
