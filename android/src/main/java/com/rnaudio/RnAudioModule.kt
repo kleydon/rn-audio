@@ -231,6 +231,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
           ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != 
             PackageManager.PERMISSION_GRANTED) {
 
+Log.d(TAG, "A")
+
         ActivityCompat.requestPermissions((currentActivity)!!, arrayOf(Manifest.permission.RECORD_AUDIO), 0)
         
         //Returning false is not ideal, but its simple; probably the least-worst solution.
@@ -240,7 +242,9 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       else if (Build.VERSION.SDK_INT >= 23 &&
           (ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
            ActivityCompat.checkSelfPermission(reactContext, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
-          
+
+Log.d(TAG, "B")
+
         ActivityCompat.requestPermissions((currentActivity)!!, arrayOf(
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE), 0)
@@ -251,6 +255,9 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       }
     } 
     catch (e: Exception) {
+
+Log.d(TAG, "C")
+
       Log.w(TAG, e.toString())
       return false
     }
