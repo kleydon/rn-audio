@@ -253,6 +253,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
         }
 
         return true
+      }
     }
     catch (e: Exception) {
       Log.w(TAG, e.toString())
