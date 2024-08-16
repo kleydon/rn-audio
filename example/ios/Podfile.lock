@@ -1164,7 +1164,7 @@ PODS:
     - React-logger (= 0.74.5)
     - React-perflogger (= 0.74.5)
     - React-utils (= 0.74.5)
-  - rn-audio (0.1.0):
+  - rn-audio (0.2.0):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1423,7 +1423,7 @@ SPEC CHECKSUMS:
   React-runtimescheduler: cfbe85c3510c541ec6dc815c7729b41304b67961
   React-utils: f242eb7e7889419d979ca0e1c02ccc0ea6e43b29
   ReactCommon: f7da14a8827b72704169a48c929bcde802698361
-  rn-audio: 12efb533ac47ef0725a11d7118ad2a64669bfafd
+  rn-audio: efb5dce4eeaa2ded0ce7485f2ffdecaf4ba14b27
   RNFS: 4ac0f0ea233904cb798630b3c077808c06931688
   SocketRocket: abac6f5de4d4d62d24e11868d7a2f427e0ef940d
   Yoga: 950bbfd7e6f04790fdb51149ed51df41f329fcc8
