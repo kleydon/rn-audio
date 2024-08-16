@@ -3,6 +3,10 @@
 
 @interface RCT_EXTERN_MODULE(RnAudio, RCTEventEmitter)
 
++ (BOOL)requiresMainQueueSetup {
+  return NO;
+}
+
 //Recorder
 
 RCT_EXTERN_METHOD(getRecorderState:(RCTPromiseResolveBlock)resolve
