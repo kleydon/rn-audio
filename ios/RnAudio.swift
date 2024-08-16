@@ -6,7 +6,7 @@ import AVFoundation
 class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
 
   let TAG = "RnAudio"
-    
+  
   //Events passed from native -> js
   enum EventId : String {
     case RecUpdate
@@ -352,7 +352,7 @@ class RnAudio: RCTEventEmitter, AVAudioRecorderDelegate {
                      rejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
     let funcName = TAG + ".startRecorder()"
     print(funcName)
-
+      
     let ro = recordingOptions
 
     print("  Requested recordingOptions:", ro)

@@ -1,4 +1,4 @@
-package com.rnaudio
+package com.quixotry.rnaudio
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
@@ -7,11 +7,11 @@ import com.facebook.react.uimanager.ViewManager
 
 
 class RnAudioPackage : ReactPackage {
-    override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(RnAudioModule(reactContext))
-    }
+  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
+    return listOf(RnAudioModule(reactContext))
+  }
 
-    override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
-        return emptyList()
-    }
+  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
+    return emptyList()
+  }
 }

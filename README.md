@@ -223,6 +223,18 @@ Developing react-native modules is slow going; it is typically necessary to work
 
 **Don't cavalierly upgrade react-native; preview with (react-native upgrade helper)[https://react-native-community.github.io/upgrade-helper/]. Probably easier to rebuild the project with [create-react-native-library](https://github.com/callstack/react-native-builder-bob)!**
 
+**You may need to run a custom ruby install, and (if you're running iOS) you won't want to mess with the default installation! I recommend chruby, with ruby-install.**
+
+**If installing npx pod-install / pod install for iOS is giving you problems, you *MAY* have hit this bug:**
+https://github.com/facebook/react-native/issues/39832
+Try running  bundle update --bundler in the project root directory (which may be example/ if building the example), then `bundle install` and `bundle exec pod install` in the ios directory
+
+**If you get a "PhaseScriptExecution" bug - make sure that the directory path to your project doesn't include any spaces (doh!)**
+
+***Async arrow functions are currently (Aug 16, 2024) unsupported by the hermes js engine.* using them can cause unpredictable effects. Instead (until there IS support) use async non-arrow functions, but provide access to the outer "this" if need be**
+
+**To deal with Yarn idiocy, see: https://levelup.gitconnected.com/how-to-use-yarn-3-with-react-native-and-how-to-migrate-c5f108108533.**
+
 ## Set up
 
 Download the project repo, and run `yarn` from `rn-audio` project directory. (If re-installing, may need to delete `node_modules` and `yarn.lock` files in the `project` and `example` directories.)

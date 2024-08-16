@@ -1,10 +1,12 @@
 import {
   DeviceEventEmitter,
-  EmitterSubscription,
   NativeEventEmitter,
   NativeModules,
   Platform,
   PermissionsAndroid
+} from 'react-native'
+import type {
+  EmitterSubscription,
 } from 'react-native'
 
 import to from 'await-to-js'
@@ -281,7 +283,7 @@ export class Audio {
    * permissions are enabled, false otherwise.
    * @returns Promise<boolean>
    */
-  verifyAndroidPermissionsEnabled = async ():Promise<boolean> => {
+  async verifyAndroidPermissionsEnabled():Promise<boolean> {
     const funcName = 'index.androidPermissionsEnabled()'
     ilog(funcName)
     if (Platform.OS === 'android') {
@@ -327,7 +329,7 @@ export class Audio {
    * Returns true if enabled, false otherwise.
    * @returns Promise<boolean>
    */
-  verifyAndroidRecordAudioEnabled = async ():Promise<boolean> => {
+  async verifyAndroidRecordAudioEnabled():Promise<boolean> {
     const funcName = 'index.androidRecordAudioEnabled()'
     ilog(funcName)
     if (Platform.OS === 'android') {
@@ -354,7 +356,7 @@ export class Audio {
    * Returns true if enabled, false otherwise.
    * @returns Promise<boolean>
    */
-  verifyAndroidWriteExternalStorageEnabled = async ():Promise<boolean> => {
+  async verifyAndroidWriteExternalStorageEnabled():Promise<boolean> {
     const funcName = 'index.androidWriteExternalStorageEnabled()'
     ilog(funcName)
     if (Platform.OS === 'android') {
@@ -382,7 +384,7 @@ export class Audio {
    * Returns true if enabled, false otherwise.
    * @returns Promise<boolean>
    */
-  verifyAndroidReadExternalStorageEnabled = async ():Promise<boolean> => {
+  async verifyAndroidReadExternalStorageEnabled():Promise<boolean> {
     const funcName = 'index.androidReadExternalStorageEnabled()'
     ilog(funcName)
     if (Platform.OS === 'android') {
@@ -405,7 +407,7 @@ export class Audio {
   }
 
 
-  resolveAndValidateRecordingOptions = async (recordingOptions:RecordingOptions): Promise<boolean> => {
+  async resolveAndValidateRecordingOptions(recordingOptions:RecordingOptions): Promise<boolean> {
 
     // This function is FAR from complete. 
     // Currently, it mainly helps to ensure successful wav file recording.
@@ -583,18 +585,18 @@ export class Audio {
       }
     }
     //--------------------
-    
+ilog('Done resolving and validating. Res:', res)
     return res ? Promise.resolve(res) : Promise.reject('Recording Option resolution errors: ' + errMsgs.toString())
   }
 
-  mmss = (secs: number): string => {
+  mmss(secs: number): string {
     let minutes = Math.floor(secs / 60)
     secs = secs % 60
     minutes = minutes % 60
     return pad(minutes) + ':' + pad(secs)
   }
 
-  mmssss = (ms: number): string => {
+  mmssss(ms: number): string {
     const secs = Math.floor(ms / 1000)
     const minutes = Math.floor(secs / 60)
     const seconds = secs % 60
@@ -602,9 +604,9 @@ export class Audio {
     return pad(minutes) + ':' + pad(seconds) + ':' + pad(miliseconds)
   }
 
-  private addRecUpdateCallback = (
+  private addRecUpdateCallback(
     callback: (recUpdateMetadata: RecUpdateMetadata) => void,
-  ): void => {
+  ): void {
     const funcName = 'index.addRecUpdateCallback()'
     ilog(funcName)
     this._recUpdateSubscription?.remove()
@@ -615,7 +617,7 @@ export class Audio {
       this._recUpdateSubscription = myModuleEvt.addListener(EventId.RecUpdate, callback)
     }
   }
-  private removeRecUpdateCallback = (): void => {
+  private removeRecUpdateCallback(): void {
     const funcName = 'index.removeRecUpdateCallback()'
     ilog(funcName)
     if (this._recUpdateSubscription) {
@@ -624,15 +626,16 @@ export class Audio {
     }
   }
 
-  private addRecStopCallback = (
+  private addRecStopCallback(
     callback: ((recStopMetadata: RecStopMetadata) => void) | null,
-  ): void => {
+  ): void {
     const funcName = 'index.addRecStopCallback()'
     ilog(funcName)
     //Ensure recording-related callbacks get removed when recording stops
-    const augmentedCallback = async (recStopMetadata: RecStopMetadata) => {
-      this.removeRecUpdateCallback()
-      this.removeRecStopCallback()
+    const self = this
+    async function augmentedCallback(recStopMetadata: RecStopMetadata) {  // not async () => ... until Hermes supports it
+      self.removeRecUpdateCallback()
+      self.removeRecStopCallback()
       if (callback) { callback(recStopMetadata) }
     }
     this._recStopSubscription?.remove()
@@ -643,7 +646,7 @@ export class Audio {
       this._recStopSubscription = myModuleEvt.addListener(EventId.RecStop, augmentedCallback)
     }
   }
-  private removeRecStopCallback = (): void => {
+  private removeRecStopCallback(): void {
     const funcName = 'index.removeRecStopCallback()'
     ilog(funcName)
     if (this._recStopSubscription) {
@@ -652,9 +655,9 @@ export class Audio {
     }
   }
 
-  private addPlayUpdateCallback = (
+  private addPlayUpdateCallback(
     callback: ((playUpdateMetadata: PlayUpdateMetadata) => void) | null,
-  ): void => {
+  ): void {
     const funcName = 'index.addPlayUpdateCallback()'
     ilog(funcName)
     this._playUpdateScription?.remove()
@@ -667,7 +670,7 @@ export class Audio {
       this._playUpdateScription = myModuleEvt.addListener(EventId.PlayUpdate, callback)
     }
   }
-  private removePlayUpdateCallback = (): void => {
+  private removePlayUpdateCallback(): void {
     const funcName = 'index.removePlayUpdateCallback()'
     ilog(funcName)
     if (this._playUpdateScription) {
@@ -676,15 +679,16 @@ export class Audio {
     }
   }
   
-  private addPlayStopCallback = (
+  private addPlayStopCallback(
     callback: ((playStopMetadata: PlayStopMetadata) => void) | null,
-  ): void => {
+  ): void {
     const funcName = 'index.addPlayStopCallback()'
     ilog(funcName)
     //Ensure play-related callbacks get removed when playing stops
-    const augmentedCallback = async (playStopMetadata: PlayStopMetadata) => {
-      this.removePlayUpdateCallback()
-      this.removePlayStopCallback()
+    const self = this
+    async function augmentedCallback(playStopMetadata: PlayStopMetadata) {  // not async () => ... until Hermes supports it
+      self.removePlayUpdateCallback()
+      self.removePlayStopCallback()
       if (callback) { callback(playStopMetadata) }
     }
     this._playStopSubscription?.remove()
@@ -695,7 +699,7 @@ export class Audio {
       this._playStopSubscription = myModuleEvt.addListener(EventId.PlayStop, augmentedCallback)
     }
   }
-  private removePlayStopCallback = (): void => {
+  private removePlayStopCallback(): void {
     const funcName = 'index.removePlayStopCallback()'
     ilog(funcName)
     if (this._playStopSubscription) {
@@ -708,7 +712,7 @@ export class Audio {
    * Resolves to the current player state.
    * @returns {Promise<PlayerState>}
    */
-  getPlayerState = async (): Promise<PlayerState> => {
+  async getPlayerState(): Promise<PlayerState> {
     const funcName = 'index.getPlayerState(): ' + RnAudio.getPlayerState()  // Casting to string doesn't work... Is there a better way?
     ilog(funcName)
     return await RnAudio.getPlayerState()
@@ -718,13 +722,13 @@ export class Audio {
    * Resolves to the current recorder state.
    * @returns {Promise<RecorderState>}
    */
-  getRecorderState = async (): Promise<RecorderState> => {
+  async getRecorderState(): Promise<RecorderState> {
     const funcName = 'index.getRecorderState()'
     ilog(funcName)
     return await RnAudio.getRecorderState()
   }
 
-  private resetRecorder = async (dontCallStop = false) => {
+  private async resetRecorder(dontCallStop = false) {
     const funcName = 'index.resetRecorder()'
     ilog(funcName)
     try {
@@ -751,11 +755,11 @@ export class Audio {
    * @param {StartRecorderArgs} startRecorderArgs param.
    * @returns {Promise<StartRecorderResult>}
    */
-  startRecorder = async ({
+  async startRecorder({
     recordingOptions,
     recUpdateCallback,
     recStopCallback = null
-  }:StartRecorderArgs): Promise<StartRecorderResult> => {
+  }:StartRecorderArgs): Promise<StartRecorderResult> {
     const funcName = 'index.startRecorder()'
     ilog(funcName)
 
@@ -769,13 +773,13 @@ export class Audio {
     if (await this.getRecorderState() !== RecorderState.Stopped) {
       return Promise.reject(funcName + ' - Unable to reset recorder')
     }
-    
+
     // Add callbacks
     if (recUpdateCallback) {
       this.addRecUpdateCallback(recUpdateCallback)
     }
     this.addRecStopCallback(recStopCallback) //MUST call - even recStopCallback is null
-
+    
     // Call RnAudio.startRecorder
     const [err, res] = await to<StartRecorderResult>(RnAudio.startRecorder(recordingOptions))
     if (err) {
@@ -793,7 +797,7 @@ export class Audio {
    * Pause recording.
    * @returns {Promise<string>}
    */
-  pauseRecorder = async (): Promise<string> => {
+  async pauseRecorder(): Promise<string> {
     const funcName = 'index.pauseRecorder()'
     ilog(funcName)
     const recorderState = await this.getRecorderState()
@@ -816,7 +820,7 @@ export class Audio {
    * Resume recording.
    * @returns {Promise<string>}
    */
-  resumeRecorder = async (): Promise<string> => {
+  async resumeRecorder(): Promise<string> {
     const funcName = 'index.resumeRecorder()'
     ilog(funcName)
     const recorderState = await this.getRecorderState()
@@ -840,7 +844,7 @@ export class Audio {
    * stop recording.
    * @returns {Promise<StopRecorderResult>}
    */
-  stopRecorder = async (silent?:boolean): Promise<StopRecorderResult> => {
+  async stopRecorder(silent?:boolean): Promise<StopRecorderResult> {
     const funcName = 'index.stopRecorder()'
     ilog(funcName)
     this.removeRecUpdateCallback()
@@ -858,7 +862,7 @@ export class Audio {
     return res
   }
 
-  private resetPlayer = async () => {
+  private async resetPlayer() {
     const funcName = 'index.resetPlayer()'
     ilog(funcName)
     try {
@@ -882,13 +886,13 @@ export class Audio {
    * @param {StartPlayerArgs} startPlayerArgs params.
    * @returns {Promise<StartPlayerResult>}
    */
-  startPlayer = async ({
+  async startPlayer({
     fileNameOrPathOrURL = DEFAULT_FILE_NAME_PLACEHOLDER,
     httpHeaders,
     playUpdateCallback,
     playStopCallback = null,
     playVolume: playbackVolume = 1.0
-  }:StartPlayerArgs): Promise<StartPlayerResult> => {
+  }:StartPlayerArgs): Promise<StartPlayerResult> {
     const funcName = 'index.startPlayer()'
     ilog(funcName)
 
@@ -930,7 +934,7 @@ export class Audio {
    * Pause playing.
    * @returns {Promise<string>}
    */
-  pausePlayer = async (): Promise<string> => {
+  async pausePlayer(): Promise<string> {
     const funcName = 'index.pausePlayer()'
     ilog(funcName)
     const playerState = await this.getPlayerState()
@@ -955,7 +959,7 @@ export class Audio {
    * Resume playing.
    * @returns {Promise<string>}
    */
-  resumePlayer = async (): Promise<string> => {
+  async resumePlayer(): Promise<string> {
     const funcName = 'index.resumePlayer()'
     ilog(funcName)
     const playerState = await this.getPlayerState()
@@ -980,7 +984,7 @@ export class Audio {
    * Stops player
    * @returns {Promise<StopPlayerResult>}
    */
-  stopPlayer = async (): Promise<StopPlayerResult> => {
+  async stopPlayer(): Promise<StopPlayerResult> {
     const funcName = 'index.stopPlayer()'
     ilog(funcName)
     this.removePlayUpdateCallback()
@@ -1002,13 +1006,13 @@ export class Audio {
    * @param {number} timeMs position seek to in millisecond.
    * @returns {Promise<string>}
    */
-  seekToPlayer = async (timeMs: number): Promise<string> => {
+  async seekToPlayer(timeMs: number): Promise<string> {
     const funcName = 'index.seekToPlayer()'
     ilog(funcName)
     const playerState = await this.getPlayerState()
     ilog(funcName + ' - playerState: ' + playerState)
     if (playerState === PlayerState.Stopped) {
-      Promise.resolve(funcName + ' - Can\'t seek; player isn\'t playing')      
+      return Promise.resolve(funcName + ' - Can\'t seek; player isn\'t playing')      
     }
     const [err, res] = await to<string>(RnAudio.seekToPlayer(timeMs))
     if (err) {
@@ -1029,7 +1033,7 @@ export class Audio {
    * @param {number} volume New volume (% of Media Volume) for pre-existing media player 
    * @returns {Promise<string>}
    */
-  setPlayerVolume = async (volume: number): Promise<string> => {
+  async setPlayerVolume(volume: number): Promise<string> {
      const funcName = 'index.setPlayerVolume()'
      ilog(funcName)
      if (volume < 0 || volume > 1) {
@@ -1050,7 +1054,7 @@ export class Audio {
    * @param {number} sec subscription callback duration in seconds.
    * @returns {Promise<string>}
    */
-  setSubscriptionDuration = async (sec: number): Promise<string> => {
+  async setSubscriptionDuration(sec: number): Promise<string> {
     const funcName = 'index.setSubscriptionDuration()'
     ilog(funcName)
     const [err, res] = await to<string>(RnAudio.setSubscriptionDuration(sec))

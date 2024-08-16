@@ -1,4 +1,4 @@
-package com.rnaudio
+package com.quixotry.rnaudio
 
 import android.media.AudioFormat
 import android.media.AudioRecord

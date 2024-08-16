@@ -1,18 +1,20 @@
 import {
   audio,
-  RecordingOptions,
   AppleAVEncoderAudioQualityId,
   AppleAudioFormatId,
   AppleAVAudioSessionModeId,
   AndroidAudioSourceId,
   AndroidAudioEncoderId,
+  AndroidOutputFormatId,
+  NumberOfChannelsId,
+  ByteDepthId,
+} from 'rn-audio'
+import type {
+  RecordingOptions,
   RecUpdateMetadata,
   RecStopMetadata,
   PlayUpdateMetadata,
   PlayStopMetadata,
-  AndroidOutputFormatId,
-  NumberOfChannelsId,
-  ByteDepthId,
   StopPlayerResult,
   StopRecorderResult,
   StartPlayerResult,
@@ -27,8 +29,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import React, {
+import type {
   ReactElement,
+} from 'react'
+import {
   useCallback,
   useState,
   useEffect,
@@ -150,13 +154,13 @@ export default function App(): ReactElement {
       return Promise.reject(errStr)
     }
     ilog(funcName + ' - recordingOptions: ', recordingOptions)
-    const recUpdateCallback = async (e: RecUpdateMetadata) => {
+    async function recUpdateCallback(e: RecUpdateMetadata) {  // not async () => ... until Hermes supports it
       ilog('app.recUpdateCallback() - metadata: ', e)
       setRecordingElapsedStr(audio.mmssss(
         Math.floor(e.recElapsedMs),
       ))
     }
-    const recStopCallback = async (e: RecStopMetadata):Promise<undefined> => {
+    async function recStopCallback(e: RecStopMetadata):Promise<undefined> {   // not async () => ... until Hermes supports it
       ilog('app.recStopCallback() - metadata:', e)
       const [err,] = await to<void>(onStopRecord())
       if (err) {
@@ -312,7 +316,13 @@ export default function App(): ReactElement {
     const newFractionPlayed = touchX / (screenWidth - 2*ss.viewBarWrapper.marginHorizontal)
     ilog(funcName + ` - touchX: ${touchX}`)
     ilog(funcName + ` - newFractionPlayed: ${newFractionPlayed}`)
-    audio.seekToPlayer(Math.round(newFractionPlayed*playbackDurationMs))
+    const timeMs = Math.round(newFractionPlayed*playbackDurationMs)
+    const [err,] = await to<string>(audio.seekToPlayer(timeMs))
+    if (err) {
+      const errStr = funcName + ': ' + err
+      elog(errStr)
+      return
+    }
   }, [playbackElapsedMs, playbackDurationMs])
 
 
