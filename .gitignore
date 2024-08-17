@@ -59,7 +59,8 @@ index.d.ts
 index.js
 
 # Yarn
-**/.yarn/**
+# See: https://levelup.gitconnected.com/how-to-use-yarn-3-with-react-native-and-how-to-migrate-c5f108108533
+.yarn/*
 !.yarn/cache
 !.yarn/patches
 !.yarn/plugins
