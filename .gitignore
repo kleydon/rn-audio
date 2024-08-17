@@ -53,10 +53,10 @@ Example/package-lock.json
 package-lock.json
 
 # Built files
-tsconfig.tsbuildinfo
-index.js.flow
-index.d.ts
-index.js
+# tsconfig.tsbuildinfo
+# index.js.flow
+# index.d.ts
+# index.js  # Necessary!
 
 # Yarn
 # See: https://levelup.gitconnected.com/how-to-use-yarn-3-with-react-native-and-how-to-migrate-c5f108108533
