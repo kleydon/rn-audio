@@ -61,12 +61,13 @@ index.js
 # Yarn
 # See: https://levelup.gitconnected.com/how-to-use-yarn-3-with-react-native-and-how-to-migrate-c5f108108533
 .yarn/*
-!.yarn/cache
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+#!.yarn/cache
+
 
 # Ruby bundler vendor folder
 **/vendor/**
