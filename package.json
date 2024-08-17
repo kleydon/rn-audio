@@ -1,6 +1,6 @@
 {
   "name": "rn-audio",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Audio recording and playback library for react-native, supporting a range of compressed formats as well as wav / lpcm, on both iOS and Android.",
   "source": "./src/index.tsx",
   "main": "./lib/commonjs/index.js",
