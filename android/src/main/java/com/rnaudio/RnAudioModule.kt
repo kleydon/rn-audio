@@ -278,7 +278,6 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   }
 
 
-  @ReactMethod
   private fun sendEvent(reactContext: ReactContext,
                         eventName: String,
                         params: WritableMap?) {
