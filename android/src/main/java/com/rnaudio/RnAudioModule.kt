@@ -172,8 +172,8 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   private fun onRoutingChangedInner() {
     var funcName = TAG + ".onRoutingChangedListener()"
     Log.d(TAG, funcName)
-    val recorderState = getRecorderState()
-    val playerState = getPlayerState()
+    val recorderState = getRecorderStateSync()
+    val playerState = getPlayerStateSync()
     try {
       if (recorderState != RecorderState.Stopped) {
         if (_recordHandler != null) {
@@ -292,21 +292,21 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun getRecorderState(promise: Promise) {
-    return promise.resolve(getRecorderState().str)
+    return promise.resolve(getRecorderStateSync().str)
   }
-  fun getRecorderState():RecorderState {
-      Log.d(TAG, "getRecorderState()")
+  fun getRecorderStateSync():RecorderState {
+      Log.d(TAG, "getRecorderStateSync()")
 
     if (encodingAsLPCM(_filePathOrUrl)) {
       if (_audioRecord == null) {
-        Log.d(TAG, "  getRecorderState() - stopped")
+        Log.d(TAG, "  getRecorderStateSync() - stopped")
         return RecorderState.Stopped
       }
       else if (_pausedRecordTimeMs != 0L) {
-        Log.d(TAG, "  getRecorderState() - paused")
+        Log.d(TAG, "  getRecorderStateSync() - paused")
         return RecorderState.Paused
       }
-      Log.d(TAG, "  getRecorderState() - recording")
+      Log.d(TAG, "  getRecorderStateSync() - recording")
       //Should this factor into "recording"?
       //audioRecordState == AudioRecord.RECORDSTATE_RECORDING ||
       //audioRecordState == AudioRecord.READ_NON_BLOCKING ||
@@ -315,14 +315,14 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     }
     else {
       if (_mediaRecorder == null) {
-        Log.d(TAG, "  getRecorderState() - stopped")
+        Log.d(TAG, "  getRecorderStateSync() - stopped")
         return RecorderState.Stopped
       }
       else if (_pausedRecordTimeMs != 0L) {
-        Log.d(TAG, "  getRecorderState() - paused")
+        Log.d(TAG, "  getRecorderStateSync() - paused")
         return RecorderState.Paused
       }
-      Log.d(TAG, "  getRecorderState() - recording")
+      Log.d(TAG, "  getRecorderStateSync() - recording")
       return RecorderState.Recording
     }
   }
@@ -330,9 +330,9 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun getPlayerState(promise: Promise) {
-    return promise.resolve(getPlayerState().str)
+    return promise.resolve(getPlayerStateSync().str)
   }
-  fun getPlayerState():PlayerState {
+  fun getPlayerStateSync():PlayerState {
     //Use _mediaPlayer!!.currentPosition > 1 to disambiguate paused?
     if (_mediaPlayer == null) {
       return PlayerState.Stopped
@@ -543,7 +543,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     //NOT recording LPCM
     
-    val recorderState = getRecorderState()
+    val recorderState = getRecorderStateSync()
     if (recorderState == RecorderState.Stopped) {
       return promise.resolve(funcName + ": Can't pause; recorder not playing.")
     }
@@ -581,7 +581,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     //NOT recording LPCM
 
-    val recorderState = getRecorderState()
+    val recorderState = getRecorderStateSync()
     if (recorderState == RecorderState.Stopped) {
       return promise.resolve(funcName + ": Can't resume; recorder not playing.")
     }
@@ -703,7 +703,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
         while (_currentlyRecordingLPCM && numSamplesProcessed < _maxNumSamples) {
 
           //Pause loop
-          while (getRecorderState() == RecorderState.Paused && _currentlyRecordingLPCM) {
+          while (getRecorderStateSync() == RecorderState.Paused && _currentlyRecordingLPCM) {
             Thread.sleep(30)
           }
           //If we've broken out of the pause loop because we're
@@ -783,7 +783,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       return promise.reject(funcName, "audioRecord was null on pause.")
     }
 
-    val recorderState = getRecorderState()
+    val recorderState = getRecorderStateSync()
     if (recorderState !== RecorderState.Recording) {
       return promise.resolve(funcName + ": Can't pause; not recording")
     }
@@ -809,7 +809,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     val funcName = TAG + ".resumeLPCMRecorder()"
     Log.d(TAG, funcName)
 
-    val recorderState = getRecorderState()
+    val recorderState = getRecorderStateSync()
     if (recorderState == RecorderState.Stopped) {
       return promise.resolve(funcName + ": Can\'t resume; recorder not recording")
     }
@@ -843,7 +843,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     }
 
     // If wasn't recording...
-    if (getRecorderState() == RecorderState.Stopped) {
+    if (getRecorderStateSync() == RecorderState.Stopped) {
       val recStopResult = createRecStopResult(RecStopCode.WasNotRecording, null)
       return promise.resolve(recStopResult)
     }
@@ -856,7 +856,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     _currentlyRecordingLPCM = false
 
     //Wait for recorder thread to stop
-    while (getRecorderState() != RecorderState.Stopped) {
+    while (getRecorderStateSync() != RecorderState.Stopped) {
       Log.d(TAG, funcName + ": Waiting for recorder to stop...")
       Thread.sleep(10)
     }
@@ -880,11 +880,11 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   fun setPlayerVolume(volume: Double, promise: Promise) {
     val funcName = TAG + ".setPlayerVolume()"
     Log.d(TAG, funcName)
-    if (getPlayerState() === PlayerState.Stopped) {
+    if (getPlayerStateSync() === PlayerState.Stopped) {
       return promise.reject(funcName, "Can\'t set volume; player stopped.")
     }
     try {
-      setPlayerVolume(volume)
+      setPlayerVolumeSync(volume)
       return promise.resolve(funcName + " - volume set.")
     }
     catch (e: Exception) {
@@ -894,7 +894,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
       return promise.reject(msgPrefix, errMsg)
     }  
   }
-  fun setPlayerVolume(volume: Double) {
+  fun setPlayerVolumeSync(volume: Double) {
     val mVolume = volume.toFloat()
     _mediaPlayer!!.setVolume(mVolume, mVolume)  // Left, right
   }
@@ -905,7 +905,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     val funcName = TAG + ".startPlayer()"
     Log.d(TAG, funcName)
 
-    val playerState = getPlayerState()
+    val playerState = getPlayerStateSync()
     if (playerState == PlayerState.Playing) {
       val errMsg = funcName + " - Player already running"
       Log.e(TAG, errMsg)
@@ -921,7 +921,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
 
     //Set volume
     try {
-      setPlayerVolume(playbackVolume)
+      setPlayerVolumeSync(playbackVolume)
     }
     catch (e: Exception) {
       sendPlayStopEvent(PlayStopCode.Error)
@@ -1028,7 +1028,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   fun pausePlayer(promise: Promise) {
     val funcName = TAG + ".pausePlayer()"
     Log.d(TAG, funcName)
-    val playerState = getPlayerState()
+    val playerState = getPlayerStateSync()
     val msgPrefix = funcName + ": "
     if (playerState == PlayerState.Stopped) {
       val msg = "Can\'t pause; player is stopped."
@@ -1056,7 +1056,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   fun resumePlayer(promise: Promise) {
     val funcName = TAG + ".resumePlayer()"
     Log.d(TAG, funcName)
-    val playerState = getPlayerState()
+    val playerState = getPlayerStateSync()
     val msgPrefix = funcName + ": "
     if (playerState == PlayerState.Stopped) {
       val msg = "Can\'t resume; player stopped."
@@ -1092,7 +1092,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
     }
 
     // If already stopped...
-    if (getPlayerState() == PlayerState.Stopped) {
+    if (getPlayerStateSync() == PlayerState.Stopped) {
       val playStopResult = createPlayStopResult(PlayStopCode.WasNotPlaying, null)
       return promise.resolve(playStopResult)
     }
@@ -1119,7 +1119,7 @@ class RnAudioModule(private val reactContext: ReactApplicationContext) :
   fun seekToPlayer(timeMs: Double, promise: Promise) {
     val funcName = TAG + ".seekToPlayer()"
     Log.d(TAG, funcName)
-    if (getPlayerState() == PlayerState.Stopped) {
+    if (getPlayerStateSync() == PlayerState.Stopped) {
       return promise.reject(funcName, "Player stopped on seek.")
     }
     try {
